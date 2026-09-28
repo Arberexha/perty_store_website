@@ -51,7 +51,8 @@ export async function sendOrderConfirmation(order: OrderConfirmation): Promise<"
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid SMTP_PORT");
   const user = process.env.SMTP_USER;
   const password = process.env.SMTP_PASSWORD;
-  if (Boolean(user) !== Boolean(password)) throw new Error("SMTP_USER and SMTP_PASSWORD must both be set");
+  if (user && !password) return "not_configured";
+  if (password && !user) throw new Error("SMTP_USER is required when SMTP_PASSWORD is set");
   const transport = nodemailer.createTransport({
     host, port, secure: port === 465,
     requireTLS: port !== 465 && !(["localhost", "127.0.0.1", "::1"].includes(host) && !user),
