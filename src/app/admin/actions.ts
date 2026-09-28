@@ -40,7 +40,7 @@ async function audit(actorId: string, action: string, entityType: string, entity
   await getPool().query("INSERT INTO admin_audit_log (id, actor_user_id, action, entity_type, entity_id) VALUES ($1,$2,$3,$4,$5)", [randomUUID(), actorId, action, entityType, entityId]);
 }
 
-async function mutate(path: string, operation: (actorId: string) => Promise<void>) {
+async function mutate(path: string, operation: (actorId: string) => Promise<void>, successParam = "saved") {
   const actor = await requireAdmin();
   let error: string | null = null;
   try {
@@ -50,7 +50,7 @@ async function mutate(path: string, operation: (actorId: string) => Promise<void
     if (!(cause instanceof InputError)) console.error("Admin mutation failed", cause);
   }
   if (!error) revalidatePath("/admin", "layout");
-  redirect(`${path}${path.includes("?") ? "&" : "?"}${error ? `error=${encodeURIComponent(error)}` : "saved=1"}`);
+  redirect(`${path}${path.includes("?") ? "&" : "?"}${error ? `error=${encodeURIComponent(error)}` : `${successParam}=1`}`);
 }
 
 export async function createCategory(form: FormData) {
@@ -97,6 +97,25 @@ export async function updateProduct(form: FormData) {
     if (!result.rowCount) throw new InputError("Product not found");
     await audit(actor, "updated", "product", id);
   });
+}
+
+export async function deleteProduct(form: FormData) {
+  await mutate("/admin/products", async (actor) => {
+    const id = text(form, "id", 100);
+    const client = await getPool().connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query("DELETE FROM products WHERE id=$1 RETURNING id", [id]);
+      if (!result.rowCount) throw new InputError("Product not found");
+      await client.query("INSERT INTO admin_audit_log (id,actor_user_id,action,entity_type,entity_id) VALUES ($1,$2,$3,$4,$5)", [randomUUID(), actor, "deleted", "product", id]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }, "deleted");
 }
 
 export async function createVariant(form: FormData) {
