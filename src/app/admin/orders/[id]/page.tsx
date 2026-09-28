@@ -8,7 +8,7 @@ import { requireAdmin } from "@/lib/auth/guard";
 import { getPool } from "@/lib/db";
 
 type DesignData = { layers?: Array<{ kind: string; text?: string; side?: string }>; personalizations?: Array<{ name: string; number: string; size: string }>; previewSide?: string; previewHeight?: number; productColors?: string[] };
-type OrderRow = { id: string; customer_name: string; customer_email: string; customer_phone: string; customer_note: string; status: string; fulfillment_method: string; shipping_address: string | null; pickup_name: string | null; pickup_address: string | null; zone_name: string | null; subtotal_cents: number; shipping_cents: number; total_cents: number; admin_note: string; created_at: Date; payment_status: string | null };
+type OrderRow = { id: string; customer_name: string; customer_email: string; customer_phone: string; customer_note: string; status: string; fulfillment_method: string; shipping_address: string | null; pickup_name: string | null; pickup_address: string | null; zone_name: string | null; subtotal_cents: number; shipping_cents: number; total_cents: number; admin_note: string; created_at: Date; payment_status: string | null; confirmation_email_status: string };
 type ItemRow = { id: string; product_name: string; variant_label: string; quantity: number; unit_price_cents: number; line_total_cents: number; design_data: DesignData | null; has_preview: boolean };
 const statuses = ["new", "in_production", "ready", "shipped", "completed", "cancelled"];
 

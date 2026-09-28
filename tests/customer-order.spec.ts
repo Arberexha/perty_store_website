@@ -45,11 +45,12 @@ test("customer places a designed order at the server calculated total", async ({
     await page.unroute("**/api/orders");
     await page.getByRole("button", { name: "Place order · €59.00" }).click();
     await expect(page.getByText("Order placed")).toBeVisible();
-    const saved = await pool.query<{ id: string; total_cents: number; subtotal_cents: number; shipping_cents: number; status: string; payment_count: number; preview_size: number; unit_price_cents: number; quantity: number }>(`SELECT o.id,o.total_cents,o.subtotal_cents,o.shipping_cents,o.status,
+    await expect(page.getByText("A confirmation email could not be sent", { exact: false })).toBeVisible();
+    const saved = await pool.query<{ id: string; total_cents: number; subtotal_cents: number; shipping_cents: number; status: string; confirmation_email_status: string; payment_count: number; preview_size: number; unit_price_cents: number; quantity: number }>(`SELECT o.id,o.total_cents,o.subtotal_cents,o.shipping_cents,o.status,o.confirmation_email_status,
       (SELECT count(*)::int FROM payments WHERE order_id=o.id) AS payment_count,
       octet_length(i.preview_png) AS preview_size,i.unit_price_cents,i.quantity
       FROM orders o JOIN order_items i ON i.order_id=o.id WHERE o.customer_email=$1`, [email]);
-    expect(saved.rows[0]).toMatchObject({ total_cents: 5900, subtotal_cents: 5400, shipping_cents: 500, status: "new", payment_count: 0, unit_price_cents: 1800, quantity: 3 });
+    expect(saved.rows[0]).toMatchObject({ total_cents: 5900, subtotal_cents: 5400, shipping_cents: 500, status: "new", confirmation_email_status: "not_configured", payment_count: 0, unit_price_cents: 1800, quantity: 3 });
     expect(saved.rows[0].preview_size).toBeGreaterThan(100);
     orderId = saved.rows[0].id;
     expect((await request.get(`/admin/orders/${orderId}/items/${(await pool.query<{ id: string }>("SELECT id FROM order_items WHERE order_id=$1", [orderId])).rows[0].id}/preview`)).status()).toBe(403);
