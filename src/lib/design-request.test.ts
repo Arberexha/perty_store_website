@@ -3,7 +3,7 @@ import { decodeDesignImage, designRequestSchema } from "./design-request";
 
 const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l1cAAAAASUVORK5CYII=";
 const request = {
-  product: "shirts", customerName: "Sample Customer", customerEmail: "sample@example.com", customerPhone: "", quantity: 3,
+  product: "shirts", catalogProductId: "product-tshirt", customerName: "Sample Customer", customerEmail: "sample@example.com", customerPhone: "", quantity: 3,
   notes: "Please contact me", productColor: "#f4f1e9", previewPng: png,
   layers: [{ id: "text-1", kind: "text", text: "Hello", color: "#183c30", font: "Arial", x: 500, y: 210, scale: 1, rotation: 0 }],
 };

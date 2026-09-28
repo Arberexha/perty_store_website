@@ -2,7 +2,7 @@ import "server-only";
 import { getPool } from "@/lib/db";
 
 export type Category = { id: string; name: string; slug: string; age_restricted: boolean; product_count: number };
-export type Product = { id: string; category_id: string; category_name: string; name: string; slug: string; description: string; status: string; ordering_enabled: boolean; age_restricted: boolean; minimum_quantity: number; variant_count: number; created_at: Date };
+export type Product = { id: string; category_id: string; category_name: string; name: string; slug: string; description: string; design_template: "pens" | "shirts" | "hats" | "lighters" | null; status: string; ordering_enabled: boolean; age_restricted: boolean; minimum_quantity: number; variant_count: number; created_at: Date };
 export type Variant = { id: string; product_id: string; sku: string; label: string; size: string; material: string; color: string; base_price_cents: number | null; active: boolean };
 export type Tier = { id: string; variant_id: string; minimum_quantity: number; unit_price_cents: number };
 export type Order = { id: string; customer_name: string; customer_email: string; status: string; fulfillment_method: string; total_cents: number; created_at: Date; admin_note: string; item_count: number; payment_status: string | null };
@@ -10,7 +10,7 @@ export type Quote = { id: string; customer_name: string; customer_email: string;
 export type Artwork = { id: string; original_name: string; mime_type: string; size_bytes: number; status: string; created_at: Date; customer_email: string | null };
 export type Pickup = { id: string; name: string; address: string; opening_hours: string; active: boolean };
 export type Shipping = { id: string; name: string; description: string; fee_cents: number; active: boolean };
-export type DesignRequest = { id: string; product_type: "pens" | "shirts" | "hats"; customer_name: string; customer_email: string; customer_phone: string; quantity: number; notes: string; product_color: string; design_data: { layers?: Array<{ kind: string; text?: string; side?: string }>; personalizations?: Array<{ name: string; number: string; size: string }>; previewSide?: string; previewHeight?: number; productColors?: string[] }; status: string; admin_note: string; created_at: Date; updated_at: Date };
+export type DesignRequest = { id: string; product_type: "pens" | "shirts" | "hats"; product_id: string | null; product_name: string | null; customer_name: string; customer_email: string; customer_phone: string; quantity: number; notes: string; product_color: string; design_data: { layers?: Array<{ kind: string; text?: string; side?: string }>; personalizations?: Array<{ name: string; number: string; size: string }>; previewSide?: string; previewHeight?: number; productColors?: string[] }; status: string; admin_note: string; created_at: Date; updated_at: Date };
 
 export async function categories(): Promise<Category[]> {
   const result = await getPool().query<Category>(`SELECT c.*, count(p.id)::int AS product_count FROM categories c LEFT JOIN products p ON p.category_id = c.id GROUP BY c.id ORDER BY c.name`);
@@ -40,11 +40,11 @@ export async function orders(): Promise<Order[]> {
 }
 
 export async function designRequests(): Promise<DesignRequest[]> {
-  return (await getPool().query<DesignRequest>(`SELECT id,product_type,customer_name,customer_email,customer_phone,quantity,notes,product_color,design_data,status,admin_note,created_at,updated_at FROM design_requests ORDER BY created_at DESC LIMIT 100`)).rows;
+  return (await getPool().query<DesignRequest>(`SELECT id,product_type,product_id,product_name,customer_name,customer_email,customer_phone,quantity,notes,product_color,design_data,status,admin_note,created_at,updated_at FROM design_requests ORDER BY created_at DESC LIMIT 100`)).rows;
 }
 
 export async function designRequest(id: string): Promise<DesignRequest | null> {
-  const result = await getPool().query<DesignRequest>(`SELECT id,product_type,customer_name,customer_email,customer_phone,quantity,notes,product_color,design_data,status,admin_note,created_at,updated_at FROM design_requests WHERE id=$1`, [id]);
+  const result = await getPool().query<DesignRequest>(`SELECT id,product_type,product_id,product_name,customer_name,customer_email,customer_phone,quantity,notes,product_color,design_data,status,admin_note,created_at,updated_at FROM design_requests WHERE id=$1`, [id]);
   return result.rows[0] ?? null;
 }
 

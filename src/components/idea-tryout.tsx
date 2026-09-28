@@ -9,11 +9,11 @@ type Product = "shirts" | "hats" | "pens" | "lighters";
 
 // Print spots are percentages of each studio photo; sizes use the stage's
 // container width (cqw) so the print scales with the preview.
-const products: Record<Product, { label: string; photo: string; mask: string; aspect: string; x: number; y: number; size: number; fit: number; rotate?: number; backdrop: string; studio: string }> = {
-  shirts: { label: "T-shirt", photo: "/images/studio-shirt-model.png", mask: "/images/masks/studio-shirt-model-mask.png", aspect: "1536 / 1024", x: 50, y: 37, size: 5.2, fit: 10, backdrop: "#bebebf", studio: "/design/shirts" },
-  hats: { label: "Hat", photo: "/images/studio-hat-photo.png", mask: "/images/masks/studio-hat-photo-mask.png", aspect: "1536 / 1024", x: 50, y: 35, size: 4.4, fit: 9, backdrop: "#c4c4c5", studio: "/design/hats" },
-  pens: { label: "Pen", photo: "/images/studio-pen-photo.png", mask: "/images/masks/studio-pen-photo-mask.png", aspect: "1935 / 812", x: 51, y: 46.5, size: 3, fit: 20, backdrop: "linear-gradient(#afaaa6, #b6b1af)", studio: "/design/pens" },
-  lighters: { label: "Lighter 18+", photo: "/images/studio-lighter-photo.png", mask: "/images/masks/studio-lighter-photo-mask.png", aspect: "1536 / 1024", x: 49.6, y: 58, size: 3.4, fit: 12, rotate: -90, backdrop: "#bbbcbf", studio: "/design/lighters" },
+const products: Record<Product, { label: string; photo: string; mask: string; aspect: string; x: number; y: number; size: number; fit: number; rotate?: number; backdrop: string }> = {
+  shirts: { label: "T-shirt", photo: "/images/studio-shirt-model.png", mask: "/images/masks/studio-shirt-model-mask.png", aspect: "1536 / 1024", x: 50, y: 37, size: 5.2, fit: 10, backdrop: "#bebebf" },
+  hats: { label: "Hat", photo: "/images/studio-hat-photo.png", mask: "/images/masks/studio-hat-photo-mask.png", aspect: "1536 / 1024", x: 50, y: 35, size: 4.4, fit: 9, backdrop: "#c4c4c5" },
+  pens: { label: "Pen", photo: "/images/studio-pen-photo.png", mask: "/images/masks/studio-pen-photo-mask.png", aspect: "1935 / 812", x: 51, y: 46.5, size: 3, fit: 20, backdrop: "linear-gradient(#afaaa6, #b6b1af)" },
+  lighters: { label: "Lighter 18+", photo: "/images/studio-lighter-photo.png", mask: "/images/masks/studio-lighter-photo-mask.png", aspect: "1536 / 1024", x: 49.6, y: 58, size: 3.4, fit: 12, rotate: -90, backdrop: "#bbbcbf" },
 };
 const order: Product[] = ["shirts", "hats", "pens", "lighters"];
 const colors = [
@@ -27,11 +27,13 @@ function isDark(hex: string) {
   return .2126 * r + .7152 * g + .0722 * b < 140;
 }
 
-export default function IdeaTryout() {
-  const [product, setProduct] = useState<Product>("shirts");
+export default function IdeaTryout({ studios }: { studios: Partial<Record<Product, string>> }) {
+  const available = order.filter((key) => studios[key]);
+  const [product, setProduct] = useState<Product>(available[0] ?? "shirts");
+  const selectedProduct = available.includes(product) ? product : available[0];
   const [color, setColor] = useState(colors[2].value);
   const [text, setText] = useState("PRISHTINA");
-  const item = products[product];
+  const item = products[selectedProduct];
   const shown = text.trim() || "Your idea";
   const darkProduct = isDark(color);
   const printStyle = {
@@ -51,7 +53,7 @@ export default function IdeaTryout() {
         <div className="pc-tryout-field" role="radiogroup" aria-label="Product">
           <span className="pc-tryout-label">1 · Product</span>
           <div className="pc-tryout-products">
-            {order.map((key) => <button type="button" role="radio" aria-checked={product === key} key={key} onClick={() => setProduct(key)}>{products[key].label}</button>)}
+            {available.map((key) => <button type="button" role="radio" aria-checked={selectedProduct === key} key={key} onClick={() => setProduct(key)}>{products[key].label}</button>)}
           </div>
         </div>
 
@@ -70,7 +72,7 @@ export default function IdeaTryout() {
           </div>
         </div>
 
-        <Link href={item.studio} className="pc-button pc-button-orange">Finish it in the {item.label.replace(" 18+", "").toLowerCase()} studio <span aria-hidden="true">↗</span></Link>
+        <Link href={studios[selectedProduct]!} className="pc-button pc-button-orange">Finish it in the {item.label.replace(" 18+", "").toLowerCase()} studio <span aria-hidden="true">↗</span></Link>
       </div>
 
       <div className="pc-tryout-frame" style={{ background: item.backdrop }}>

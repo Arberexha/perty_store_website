@@ -14,6 +14,7 @@ const imageLayer = z.object({ ...layerBase, kind: z.literal("image"), src: z.str
 
 export const designRequestSchema = z.object({
   product: z.enum(["pens", "shirts", "hats"]),
+  catalogProductId: z.string().min(1).max(100),
   customerName: z.string().trim().min(2).max(120),
   customerEmail: z.email().max(254),
   customerPhone: z.string().trim().max(40).default(""),

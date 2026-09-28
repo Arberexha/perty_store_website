@@ -4,12 +4,15 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent, PointerEvent } from "react";
 import { removePlainBackground } from "@/lib/remove-plain-background";
-import { HEIGHT, WIDTH, artIcons, initialLayers, photoSources, printArea, productLinks, products, shirtSides } from "./model";
+import { HEIGHT, WIDTH, artIcons, initialLayers, photoSources, printArea, products, shirtSides } from "./model";
 import type { DragState, DraftSnapshot, Layer, Personalization, Product, ShirtSide, ShirtTool, TextLayer, ViewDrag } from "./model";
 import { canvasPoint, hitLayer, loadProductPhoto, render } from "./canvas";
 
-export default function ProductDesigner({ product = "pens" }: { product?: Product }) {
+const legacyProductIds: Record<Product, string> = { pens: "product-pen", shirts: "product-tshirt", hats: "product-hat", lighters: "product-lighter" };
+
+export default function ProductDesigner({ product, catalogProductId, catalogName, catalogAgeRestricted, catalogProducts }: { product: Product; catalogProductId: string; catalogName: string; catalogAgeRestricted: boolean; catalogProducts: { id: string; name: string; slug: string; design_template: Product; age_restricted: boolean }[] }) {
   const config = products[product];
+  const canRequest = product !== "lighters" && !catalogAgeRestricted;
   const [shirtSide, setShirtSide] = useState<ShirtSide>("front");
   const [shirtTool, setShirtTool] = useState<ShirtTool>("product");
   const [artColor, setArtColor] = useState("#0000ee");
@@ -20,7 +23,7 @@ export default function ProductDesigner({ product = "pens" }: { product?: Produc
   const [colorVariants, setColorVariants] = useState<string[]>([]);
   const PRINT = printArea(product, shirtSide);
   const productColors = config.colors;
-  const STORAGE_KEY = `perty-${product}-design-v1`;
+  const STORAGE_KEY = `perty-${catalogProductId}-design-v1`;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const shirtUploadRef = useRef<HTMLInputElement>(null);
   const imagesRef = useRef(new Map<string, HTMLImageElement>());
@@ -80,7 +83,7 @@ export default function ProductDesigner({ product = "pens" }: { product?: Produc
     queueMicrotask(() => {
       if (!active) return;
       try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem(STORAGE_KEY) ?? (catalogProductId === legacyProductIds[product] ? localStorage.getItem(`perty-${product}-design-v1`) : null);
         if (saved) {
           const draft = JSON.parse(saved) as { productColor?: string; pencilColor?: string; layers?: Layer[]; shirtSide?: ShirtSide; personalizations?: Personalization[]; colorVariants?: string[] };
           const savedColor = draft.productColor ?? draft.pencilColor;
@@ -98,7 +101,7 @@ export default function ProductDesigner({ product = "pens" }: { product?: Produc
       setLoaded(true);
     });
     return () => { active = false; };
-  }, [STORAGE_KEY, product]);
+  }, [STORAGE_KEY, catalogProductId, product]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -421,7 +424,7 @@ export default function ProductDesigner({ product = "pens" }: { product?: Produc
 
   async function submitDesign(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting || submittedId || product === "lighters") return;
+    if (submitting || submittedId || !canRequest) return;
     setSubmitError(null);
     if (!layers.length || layers.some((layer) => layer.kind === "text" && !layer.text.trim())) {
       setSubmitError("Add a design and make sure text layers are not empty before submitting.");
@@ -441,6 +444,7 @@ export default function ProductDesigner({ product = "pens" }: { product?: Produc
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           product,
+          catalogProductId,
           customerName: String(form.get("customer_name") ?? "").trim(),
           customerEmail: String(form.get("customer_email") ?? "").trim(),
           customerPhone: String(form.get("customer_phone") ?? "").trim(),
@@ -516,8 +520,8 @@ export default function ProductDesigner({ product = "pens" }: { product?: Produc
   return (
     <main className="studio-page is-lab">
       <div className="studio-shell">
-        <div className="studio-top"><Link href="/#shop-categories" className="studio-back">← Back to products</Link><span className="studio-badge">{product === "lighters" ? "Design Lab · 18+ preview only" : "Design Lab · Request a quote"}</span></div>
-        <div className="studio-heading"><span className="store-kicker">CUSTOM {config.name.toUpperCase()} PRINTING</span><h1>Design your {config.singular}.</h1><p>Choose a color, add your text or artwork, then drag it anywhere on the {config.singular}. Use your finger on a phone or tablet.</p><nav className="studio-product-nav" aria-label="Choose a product to design">{productLinks.map((item) => <Link key={item} href={`/design/${item}`} aria-current={product === item ? "page" : undefined}>{products[item].name}{item === "lighters" ? " 18+" : ""}</Link>)}</nav></div>
+        <div className="studio-top"><Link href="/#shop-categories" className="studio-back">← Back to products</Link><span className="studio-badge">{canRequest ? "Design Lab · Request a quote" : "Design Lab · 18+ preview only"}</span></div>
+        <div className="studio-heading"><span className="store-kicker">{catalogName.toUpperCase()}</span><h1>Design {catalogName}.</h1><p>Choose a color, add your text or artwork, then drag it anywhere on the {config.singular}. Use your finger on a phone or tablet.</p><nav className="studio-product-nav" aria-label="Choose a product to design">{catalogProducts.map((item) => <Link key={item.id} href={`/design/${item.slug}`} aria-current={catalogProductId === item.id ? "page" : undefined}>{item.name}{item.age_restricted ? " 18+" : ""}</Link>)}</nav></div>
         <div className="studio-grid">
           <section className="studio-preview" aria-label={`${config.name} design preview`}>
             <div className="studio-preview-header"><strong>Live preview</strong><span>{viewMode === "edit" ? "Drag artwork anywhere on the product" : "Drag the product to inspect it from an angle"}</span></div>
@@ -535,7 +539,7 @@ export default function ProductDesigner({ product = "pens" }: { product?: Produc
               </div>
             </div>
             <div className="studio-view-controls"><label>Zoom <strong>{Math.round(zoom * 100)}%</strong><input type="range" min="0.7" max="1.7" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>{viewMode === "inspect" && <><label>Turn <strong>{Math.round(yaw)}°</strong><input type="range" min="-65" max="65" value={yaw} onChange={(event) => setYaw(Number(event.target.value))} /></label><label>Tilt <strong>{Math.round(pitch)}°</strong><input type="range" min="-40" max="40" value={pitch} onChange={(event) => setPitch(Number(event.target.value))} /></label></>}<button type="button" onClick={() => { setYaw(-22); setPitch(13); setZoom(1); }}>Reset view</button></div>
-            <div className="studio-preview-footer"><span>{product === "shirts" ? `${shirtSides.find((side) => side.id === shirtSide)?.label} · ${visibleLayers.length} design layers` : viewMode === "edit" ? "Drag artwork to move it. Use the arrow keys for precise placement." : "Drag to turn the product. Switch to Edit design to move artwork."}</span><div className="studio-preview-actions"><button type="button" onClick={sharePreview}>Save / Share</button><button type="button" onClick={downloadPreview}>Download PNG</button>{product !== "lighters" && <a href="#send-design">Get a quote →</a>}</div></div>
+            <div className="studio-preview-footer"><span>{product === "shirts" ? `${shirtSides.find((side) => side.id === shirtSide)?.label} · ${visibleLayers.length} design layers` : viewMode === "edit" ? "Drag artwork to move it. Use the arrow keys for precise placement." : "Drag to turn the product. Switch to Edit design to move artwork."}</span><div className="studio-preview-actions"><button type="button" onClick={sharePreview}>Save / Share</button><button type="button" onClick={downloadPreview}>Download PNG</button>{canRequest && <a href="#send-design">Get a quote →</a>}</div></div>
           </section>
           <aside className="studio-shirt-tools" aria-label={`${config.singular} design tools`}>
             <div className="shirt-tools-heading"><span>DESIGN LAB</span><h2>Make it yours.</h2><p>{product === "shirts" ? "Design the front, back, and sleeves of your T-shirt." : `Add a name, logo, or artwork to your ${config.singular}.`}</p></div>
@@ -546,7 +550,7 @@ export default function ProductDesigner({ product = "pens" }: { product?: Produc
               ] as const).map(([id, icon, label]) => <button type="button" key={id} aria-pressed={shirtTool === id} onClick={() => setShirtTool(id)}><span aria-hidden="true">{icon}</span>{label}</button>)}
             </div>
             <div className="shirt-tool-panel">
-              {shirtTool === "product" && <section><h3>Product color</h3><p>Choose a {config.singular} color and preview your design immediately.</p><div className="color-options">{productColors.map((color) => <button type="button" key={color.value} className={productColor === color.value ? "color-swatch active" : "color-swatch"} style={{ backgroundColor: color.value }} aria-label={color.name} aria-pressed={productColor === color.value} title={color.name} onClick={() => { rememberChange(); setProductColor(color.value); }} />)}</div><label className="custom-product-color">Custom {config.singular} color<input type="color" value={productColor} onPointerDown={rememberChange} onChange={(event) => setProductColor(event.target.value)} /></label><span className="tool-hint">{productColors.find((color) => color.value === productColor)?.name ?? productColor.toUpperCase()}</span>{product !== "lighters" && <><button className="shirt-secondary-action" type="button" onClick={() => { if (!colorVariants.includes(productColor) && colorVariants.length < 12) { rememberChange(); setColorVariants((current) => [...current, productColor]); } }}>+ Add this color to request</button>{colorVariants.length > 0 && <div className="shirt-color-variants">{colorVariants.map((color) => <button key={color} type="button" title={`Remove ${color}`} onClick={() => { rememberChange(); setColorVariants((current) => current.filter((item) => item !== color)); }}><i style={{ backgroundColor: color }} />{productColors.find((item) => item.value === color)?.name ?? color} ×</button>)}</div>}</>}</section>}
+              {shirtTool === "product" && <section><h3>Product color</h3><p>Choose a {config.singular} color and preview your design immediately.</p><div className="color-options">{productColors.map((color) => <button type="button" key={color.value} className={productColor === color.value ? "color-swatch active" : "color-swatch"} style={{ backgroundColor: color.value }} aria-label={color.name} aria-pressed={productColor === color.value} title={color.name} onClick={() => { rememberChange(); setProductColor(color.value); }} />)}</div><label className="custom-product-color">Custom {config.singular} color<input type="color" value={productColor} onPointerDown={rememberChange} onChange={(event) => setProductColor(event.target.value)} /></label><span className="tool-hint">{productColors.find((color) => color.value === productColor)?.name ?? productColor.toUpperCase()}</span>{canRequest && <><button className="shirt-secondary-action" type="button" onClick={() => { if (!colorVariants.includes(productColor) && colorVariants.length < 12) { rememberChange(); setColorVariants((current) => [...current, productColor]); } }}>+ Add this color to request</button>{colorVariants.length > 0 && <div className="shirt-color-variants">{colorVariants.map((color) => <button key={color} type="button" title={`Remove ${color}`} onClick={() => { rememberChange(); setColorVariants((current) => current.filter((item) => item !== color)); }}><i style={{ backgroundColor: color }} />{productColors.find((item) => item.value === color)?.name ?? color} ×</button>)}</div>}</>}</section>}
               {shirtTool === "text" && <section><h3>Add text</h3><p>Add a line of text to the {product === "shirts" ? shirtSides.find((side) => side.id === shirtSide)?.label.toLowerCase() : config.singular}. Select it on the {config.singular} to change the font, shape, outline, and color.</p><button className="shirt-primary-action" type="button" onClick={addText}>+ Add text</button></section>}
               {shirtTool === "upload" && <section><h3>Upload your artwork</h3><p>PNG, JPG, or WebP up to 1 MB. Plain light backgrounds are removed automatically. Transparent PNGs keep their transparency.</p><button className="shirt-primary-action" type="button" onClick={() => shirtUploadRef.current?.click()}>↑ Choose an image</button><input ref={shirtUploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="visually-hidden" onChange={uploadImage} /><p className="shirt-tool-note">You can also drag an image onto the {config.singular}.</p></section>}
               {shirtTool === "art" && <section><h3>Add art</h3><p>Pick a shape, then place and resize it on the {config.singular}.</p><label className="shirt-art-color">Art color<input type="color" value={artColor} onChange={(event) => setArtColor(event.target.value)} /></label><div className="shirt-art-grid">{artIcons.map((icon) => <button key={icon.id} type="button" onClick={() => addArt(icon)} title={`Add ${icon.name}`}><svg viewBox="0 0 100 100" aria-hidden="true"><path d={icon.path} fill={artColor} /></svg><span>{icon.name}</span></button>)}</div></section>}
@@ -560,7 +564,7 @@ export default function ProductDesigner({ product = "pens" }: { product?: Produc
             <button className="shirt-start-over" type="button" onClick={resetDesign}>Start over</button>
           </aside>
         </div>
-        {product !== "lighters" && <section className="studio-order-request" id="send-design" aria-labelledby="send-design-title">
+        {canRequest && <section className="studio-order-request" id="send-design" aria-labelledby="send-design-title">
           <div><span className="store-kicker">WHEN YOUR DESIGN IS READY</span><h2 id="send-design-title">Send it to our team.</h2><p>We will review your design and contact you to confirm options, price, and delivery or pickup. Sending this request does not place a paid order.</p></div>
           {submittedId ? <div className="studio-order-success" role="status"><strong>Design request sent</strong><p>Reference <code>#{submittedId.slice(0, 8)}</code>. Our team can now see your design in the admin panel and will contact you using the email provided.</p><button type="button" onClick={() => { setSubmittedId(null); setSubmitError(null); }}>Send another request</button></div> : <form onSubmit={submitDesign} className="studio-order-form">
             <div className="studio-order-fields"><label>Your name<input name="customer_name" type="text" autoComplete="name" required minLength={2} maxLength={120} /></label><label>Email address<input name="customer_email" type="email" autoComplete="email" required maxLength={254} /></label><label>Phone (optional)<input name="customer_phone" type="tel" autoComplete="tel" maxLength={40} /></label><label>Quantity<input name="quantity" type="number" min={1} max={1000} defaultValue={1} required /></label></div>
@@ -569,7 +573,7 @@ export default function ProductDesigner({ product = "pens" }: { product?: Produc
             <button type="submit" disabled={submitting}>{submitting ? "Sending design…" : "Send design request"}</button>
           </form>}
         </section>}
-        <p className="studio-message" role="status">{message}</p><p className="studio-disclaimer">This editor creates a visual preview and saves your draft in this browser. {product === "lighters" ? "Lighters are 18+ and cannot be ordered online." : "Design requests are reviewed by staff before price, production, or delivery is confirmed."}</p>
+        <p className="studio-message" role="status">{message}</p><p className="studio-disclaimer">This editor creates a visual preview and saves your draft in this browser. {canRequest ? "Design requests are reviewed by staff before price, production, or delivery is confirmed." : "This 18+ product cannot be ordered online."}</p>
       </div>
     </main>
   );

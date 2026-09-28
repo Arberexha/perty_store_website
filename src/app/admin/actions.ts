@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/auth/guard";
 import { getPool } from "@/lib/db";
 import { parseEuro, slugify } from "@/lib/admin/format";
 import { productOrderingError } from "@/lib/admin/policy";
+import { isDesignTemplate } from "@/lib/catalog-config";
 
 class InputError extends Error {}
 
@@ -49,7 +50,10 @@ async function mutate(path: string, operation: (actorId: string) => Promise<void
     error = cause instanceof InputError ? cause.message : "Could not save. Check for duplicate names or values and try again.";
     if (!(cause instanceof InputError)) console.error("Admin mutation failed", cause);
   }
-  if (!error) revalidatePath("/admin", "layout");
+  if (!error) {
+    revalidatePath("/admin", "layout");
+    if (path.startsWith("/admin/products")) revalidatePath("/");
+  }
   redirect(`${path}${path.includes("?") ? "&" : "?"}${error ? `error=${encodeURIComponent(error)}` : `${successParam}=1`}`);
 }
 
@@ -72,8 +76,10 @@ export async function createProduct(form: FormData) {
     const categoryId = text(form, "category_id", 100);
     const category = await getPool().query<{ age_restricted: boolean }>("SELECT age_restricted FROM categories WHERE id=$1", [categoryId]);
     if (!category.rows[0]) throw new InputError("Choose a category");
+    const template = text(form, "design_template", 20);
+    if (!isDesignTemplate(template)) throw new InputError("Choose a design studio");
     const id = randomUUID();
-    await getPool().query(`INSERT INTO products (id,category_id,name,slug,description,age_restricted,minimum_quantity) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [id, categoryId, name, slug, optionalText(form, "description"), category.rows[0].age_restricted, positiveInteger(form, "minimum_quantity")]);
+    await getPool().query(`INSERT INTO products (id,category_id,name,slug,description,age_restricted,minimum_quantity,design_template) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [id, categoryId, name, slug, optionalText(form, "description"), category.rows[0].age_restricted || template === "lighters", positiveInteger(form, "minimum_quantity"), template]);
     await audit(actor, "created", "product", id);
   });
 }
@@ -86,14 +92,16 @@ export async function updateProduct(form: FormData) {
     if (!category.rows[0]) throw new InputError("Choose a category");
     const status = text(form, "status", 20);
     if (!["draft", "published", "archived"].includes(status)) throw new InputError("Choose a valid status");
-    const ageRestricted = category.rows[0].age_restricted || form.has("age_restricted");
+    const template = text(form, "design_template", 20);
+    if (!isDesignTemplate(template)) throw new InputError("Choose a design studio before publishing");
+    const ageRestricted = category.rows[0].age_restricted || template === "lighters" || form.has("age_restricted");
     const orderable = form.has("ordering_enabled");
     if (orderable) {
       const priced = await getPool().query("SELECT 1 FROM product_variants WHERE product_id=$1 AND active=true AND base_price_cents IS NOT NULL LIMIT 1", [id]);
       const error = productOrderingError({ ageRestricted, categoryRestricted: category.rows[0].age_restricted, status, hasPricedActiveVariant: Boolean(priced.rowCount) });
       if (error) throw new InputError(error);
     }
-    const result = await getPool().query(`UPDATE products SET category_id=$2,name=$3,description=$4,status=$5,ordering_enabled=$6,age_restricted=$7,minimum_quantity=$8,updated_at=now() WHERE id=$1`, [id, categoryId, text(form, "name", 120), optionalText(form, "description"), status, orderable, ageRestricted, positiveInteger(form, "minimum_quantity")]);
+    const result = await getPool().query(`UPDATE products SET category_id=$2,name=$3,description=$4,status=$5,ordering_enabled=$6,age_restricted=$7,minimum_quantity=$8,design_template=$9,updated_at=now() WHERE id=$1`, [id, categoryId, text(form, "name", 120), optionalText(form, "description"), status, orderable, ageRestricted, positiveInteger(form, "minimum_quantity"), template]);
     if (!result.rowCount) throw new InputError("Product not found");
     await audit(actor, "updated", "product", id);
   });

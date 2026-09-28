@@ -18,12 +18,13 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           <div className="panel-title"><h2>Product catalogue</h2><span>{items.length} products</span></div>
           <div className="admin-table-wrap">
             <table className="admin-table">
-              <thead><tr><th>Product</th><th>Category</th><th>Variants</th><th>Status</th><th>Online orders</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Product</th><th>Category</th><th>Studio</th><th>Variants</th><th>Status</th><th>Online orders</th><th>Actions</th></tr></thead>
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id}>
                     <td><strong>{item.name}</strong><small>/{item.slug}</small></td>
                     <td>{item.category_name}</td>
+                    <td>{item.design_template ?? "—"}</td>
                     <td>{item.variant_count}</td>
                     <td><span className="status-pill">{item.status}</span></td>
                     <td>{item.age_restricted ? <span className="status-pill restricted">18+ excluded</span> : item.ordering_enabled ? <span className="status-pill positive">Enabled</span> : "Off"}</td>
@@ -50,9 +51,10 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           <form action={createProduct} className="admin-form">
             <label>Product name<input name="name" maxLength={120} required placeholder="Custom T-shirt" /></label>
             <label>Category<select name="category_id" required defaultValue=""><option value="" disabled>Choose a category</option>{groups.map((group) => <option value={group.id} key={group.id}>{group.name}{group.age_restricted ? " (18+)" : ""}</option>)}</select></label>
+            <label>Design studio<select name="design_template" required defaultValue=""><option value="" disabled>Choose a product type</option><option value="pens">Pen</option><option value="shirts">T-shirt</option><option value="hats">Hat</option><option value="lighters">Lighter (18+ preview only)</option></select></label>
             <label>Minimum quantity<input name="minimum_quantity" type="number" min="1" defaultValue="1" required /></label>
             <label>Description<textarea name="description" rows={4} placeholder="What can customers customize?" /></label>
-            <p className="form-help">New products start as drafts. Add priced variants before enabling online orders.</p>
+            <p className="form-help">New products start as drafts. Publish one to show it on the storefront. The selected studio supplies its product photo and editing tools.</p>
             <button className="admin-primary" type="submit">Add product</button>
           </form>
         </section>
