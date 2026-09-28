@@ -25,6 +25,7 @@ test("an admin can cancel or confirm product deletion", async ({ page }) => {
     await page.context().addCookies([{ name: "perty_session", value: token, url: "http://127.0.0.1:3000" }]);
     await page.goto("/admin/products");
     const deleteButton = page.getByRole("button", { name: `Delete ${name}` });
+    await expect(page.getByRole("link", { name: `Edit ${name}` }).locator("svg")).toBeVisible();
     await expect(deleteButton).toBeVisible();
 
     page.once("dialog", (dialog) => dialog.dismiss());

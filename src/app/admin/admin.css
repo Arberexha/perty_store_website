@@ -88,8 +88,13 @@ body:has(.admin-shell) { background: #f5f7fb; }
 .status-pill.positive { background: #e5f8ee; color: #16815c; }
 .status-pill.restricted { background: #fff0ea; color: #b75d36; }
 .table-link { color: var(--admin-blue); font-size: 11px; font-weight: 800; background: none; border: 0; padding: 0; }
-.table-link.danger { color: #b42332; cursor: pointer; }
-.product-actions { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
+.product-actions { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.product-action-icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid #d8deea; border-radius: 6px; background: #fff; color: var(--admin-blue); cursor: pointer; }
+.product-action-icon svg { width: 18px; height: 18px; }
+.product-action-icon:hover { background: #f1f5ff; }
+.product-action-icon:focus-visible { outline: 2px solid #94adf6; outline-offset: 2px; }
+.product-action-icon.danger { color: #b42332; }
+.product-action-icon.danger:hover { background: #fff0f0; border-color: #eac2c6; }
 .admin-empty { padding: 45px 15px; text-align: center; color: #8b96a8; font-size: 12px; }
 .audit-panel ul { list-style: none; padding: 0; margin: 0; }
 .audit-panel li { border-top: 1px solid var(--admin-line); padding: 13px 0; display: flex; align-items: center; gap: 12px; font-size: 12px; }

@@ -27,7 +27,17 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                     <td>{item.variant_count}</td>
                     <td><span className="status-pill">{item.status}</span></td>
                     <td>{item.age_restricted ? <span className="status-pill restricted">18+ excluded</span> : item.ordering_enabled ? <span className="status-pill positive">Enabled</span> : "Off"}</td>
-                    <td><div className="product-actions"><Link className="table-link" href={`/admin/products/${item.id}`}>Edit ↗</Link><DeleteProductForm id={item.id} name={item.name} /></div></td>
+                    <td>
+                      <div className="product-actions">
+                        <Link className="product-action-icon" href={`/admin/products/${item.id}`} aria-label={`Edit ${item.name}`} title={`Edit ${item.name}`}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" />
+                            <path d="m13.5 6.5 4 4" />
+                          </svg>
+                        </Link>
+                        <DeleteProductForm id={item.id} name={item.name} />
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
