@@ -1,0 +1,20 @@
+node_modules/
+.npm-cache/
+.next/
+.env
+.env.local
+.env.*.local
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+
+# Local design research, not used by the app
+/customink-design/
+/design-references/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

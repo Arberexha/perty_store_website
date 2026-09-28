@@ -1,0 +1,8 @@
+import { createCategory } from "../actions";
+import { AdminNotice } from "@/components/admin-notice";
+import { categories } from "@/lib/admin/data";
+
+export default async function CategoriesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
+  const [items, notice] = await Promise.all([categories(), searchParams]);
+  return <main className="admin-content"><div className="admin-page-heading"><div><span className="admin-kicker">CATALOGUE</span><h1>Categories</h1><p>Group products and identify 18+ items.</p></div></div><AdminNotice {...notice} /><div className="admin-two-column"><section className="admin-panel"><div className="panel-title"><h2>All categories</h2><span>{items.length} total</span></div><div className="admin-list">{items.map((item) => <div className="admin-list-row" key={item.id}><div><strong>{item.name}</strong><small>/{item.slug} · {item.product_count} products</small></div><span className={item.age_restricted ? "status-pill restricted" : "status-pill"}>{item.age_restricted ? "18+ · no online orders" : "Standard"}</span></div>)}</div></section><section className="admin-panel"><div className="panel-title"><h2>Add category</h2></div><form action={createCategory} className="admin-form"><label>Name<input name="name" maxLength={80} required placeholder="e.g. Accessories" /></label><label className="checkbox-label"><input type="checkbox" name="age_restricted" /> Age restricted (18+)</label><p className="form-help">Products in an 18+ category cannot be enabled for customer ordering.</p><button className="admin-primary" type="submit">Add category</button></form></section></div></main>;
+}

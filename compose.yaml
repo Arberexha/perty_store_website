@@ -1,0 +1,19 @@
+services:
+  database:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: perty_print
+      POSTGRES_USER: perty
+      POSTGRES_PASSWORD: perty
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perty -d perty_print"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
