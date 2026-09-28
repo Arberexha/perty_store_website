@@ -2,6 +2,8 @@ import "server-only";
 import { getPool } from "@/lib/db";
 import { isDesignTemplate } from "@/lib/catalog-config";
 import type { DesignTemplate } from "@/lib/catalog-config";
+import type { PrintArea } from "@/lib/product-mockup";
+import { productImageUrl } from "@/lib/product-mockup";
 
 export type StorefrontProduct = {
   id: string;
@@ -10,13 +12,15 @@ export type StorefrontProduct = {
   description: string;
   design_template: DesignTemplate;
   age_restricted: boolean;
+  image_url: string | null;
+  print_area: PrintArea | null;
 };
 
 export async function storefrontProducts(): Promise<StorefrontProduct[]> {
-  const result = await getPool().query<StorefrontProduct>(`SELECT id,name,slug,description,design_template,age_restricted
+  const result = await getPool().query<Omit<StorefrontProduct, "image_url"> & { updated_at: Date; has_mockup: boolean }>(`SELECT id,name,slug,description,design_template,age_restricted,print_area,updated_at,(mockup_image IS NOT NULL) AS has_mockup
     FROM products WHERE status='published' AND design_template IS NOT NULL
     ORDER BY created_at,name`);
-  return result.rows;
+  return result.rows.map(({ updated_at, has_mockup, ...item }) => ({ ...item, image_url: has_mockup ? productImageUrl(item.id, updated_at) : null }));
 }
 
 export async function storefrontProduct(segment: string): Promise<StorefrontProduct | null> {

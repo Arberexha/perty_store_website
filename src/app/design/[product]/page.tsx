@@ -15,5 +15,5 @@ export default async function ProductDesignPage({ params }: { params: Promise<{ 
   const { product } = await params;
   const [item, items] = await Promise.all([storefrontProduct(product), storefrontProducts()]);
   if (!item) notFound();
-  return <ProductDesigner key={item.id} product={item.design_template} catalogProductId={item.id} catalogName={item.name} catalogAgeRestricted={item.age_restricted} catalogProducts={items} />;
+  return <ProductDesigner key={item.id} product={item.design_template} catalogProductId={item.id} catalogName={item.name} catalogAgeRestricted={item.age_restricted} catalogImageUrl={item.image_url} catalogPrintArea={item.print_area} catalogProducts={items} />;
 }

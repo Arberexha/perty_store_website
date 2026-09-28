@@ -3,6 +3,7 @@ import { createProduct } from "../actions";
 import { DeleteProductForm } from "./delete-product-form";
 import { AdminNotice } from "@/components/admin-notice";
 import { categories, products } from "@/lib/admin/data";
+import { MockupFields } from "./mockup-fields";
 
 export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ saved?: string; deleted?: string; error?: string }> }) {
   const [items, groups, notice] = await Promise.all([products(), categories(), searchParams]);
@@ -54,7 +55,8 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
             <label>Design studio<select name="design_template" required defaultValue=""><option value="" disabled>Choose a product type</option><option value="pens">Pen</option><option value="shirts">T-shirt</option><option value="hats">Hat</option><option value="lighters">Lighter (18+ preview only)</option></select></label>
             <label>Minimum quantity<input name="minimum_quantity" type="number" min="1" defaultValue="1" required /></label>
             <label>Description<textarea name="description" rows={4} placeholder="What can customers customize?" /></label>
-            <p className="form-help">New products start as drafts. Publish one to show it on the storefront. The selected studio supplies its product photo and editing tools.</p>
+            <MockupFields />
+            <p className="form-help">New products start as drafts. Publish one to show it on the storefront. Without an uploaded photo, the selected studio supplies its standard product image.</p>
             <button className="admin-primary" type="submit">Add product</button>
           </form>
         </section>

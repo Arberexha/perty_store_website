@@ -4,24 +4,28 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent, PointerEvent } from "react";
 import { removePlainBackground } from "@/lib/remove-plain-background";
+import { DEFAULT_PRINT_AREA } from "@/lib/product-mockup";
+import type { PrintArea } from "@/lib/product-mockup";
 import { HEIGHT, WIDTH, artIcons, initialLayers, photoSources, printArea, products, shirtSides } from "./model";
 import type { DragState, DraftSnapshot, Layer, Personalization, Product, ShirtSide, ShirtTool, TextLayer, ViewDrag } from "./model";
-import { canvasPoint, hitLayer, loadProductPhoto, render } from "./canvas";
+import { canvasPoint, hitLayer, loadImage, loadProductPhoto, render } from "./canvas";
 
 const legacyProductIds: Record<Product, string> = { pens: "product-pen", shirts: "product-tshirt", hats: "product-hat", lighters: "product-lighter" };
 
-export default function ProductDesigner({ product, catalogProductId, catalogName, catalogAgeRestricted, catalogProducts }: { product: Product; catalogProductId: string; catalogName: string; catalogAgeRestricted: boolean; catalogProducts: { id: string; name: string; slug: string; design_template: Product; age_restricted: boolean }[] }) {
+export default function ProductDesigner({ product, catalogProductId, catalogName, catalogAgeRestricted, catalogImageUrl, catalogPrintArea, catalogProducts }: { product: Product; catalogProductId: string; catalogName: string; catalogAgeRestricted: boolean; catalogImageUrl: string | null; catalogPrintArea: PrintArea | null; catalogProducts: { id: string; name: string; slug: string; design_template: Product; age_restricted: boolean }[] }) {
   const config = products[product];
+  const customPhoto = Boolean(catalogImageUrl);
+  const customArea = customPhoto ? (catalogPrintArea ?? DEFAULT_PRINT_AREA) : null;
   const canRequest = product !== "lighters" && !catalogAgeRestricted;
   const [shirtSide, setShirtSide] = useState<ShirtSide>("front");
-  const [shirtTool, setShirtTool] = useState<ShirtTool>("product");
+  const [shirtTool, setShirtTool] = useState<ShirtTool>(customPhoto ? "text" : "product");
   const [artColor, setArtColor] = useState("#0000ee");
   const [rosterName, setRosterName] = useState("");
   const [rosterNumber, setRosterNumber] = useState("");
   const [rosterSize, setRosterSize] = useState("M");
   const [personalizations, setPersonalizations] = useState<Personalization[]>([]);
   const [colorVariants, setColorVariants] = useState<string[]>([]);
-  const PRINT = printArea(product, shirtSide);
+  const PRINT = customArea ?? printArea(product, shirtSide);
   const productColors = config.colors;
   const STORAGE_KEY = `perty-${catalogProductId}-design-v1`;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,7 +44,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   const [pitch, setPitch] = useState(13);
   const [zoom, setZoom] = useState(1);
   const [productColor, setProductColor] = useState(config.colors[0].value);
-  const [layers, setLayers] = useState<Layer[]>(() => product === "shirts" ? [] : initialLayers.map((layer) => ({ ...layer, font: "PertySharpSans", color: "#000000", x: (config.print.left + config.print.right) / 2, y: (config.print.top + config.print.bottom) / 2, scale: product === "lighters" ? .52 : product === "hats" ? .75 : product === "pens" ? .65 : 1 })));
+  const [layers, setLayers] = useState<Layer[]>(() => product === "shirts" ? [] : initialLayers.map((layer) => ({ ...layer, font: "PertySharpSans", color: "#000000", x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: product === "lighters" ? .52 : product === "hats" ? .75 : product === "pens" ? .65 : 1 })));
   const [selectedId, setSelectedId] = useState<string | null>(product === "shirts" ? null : "starter");
   const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState(`Move a design directly on the ${config.singular} with your finger or mouse.`);
@@ -88,11 +92,11 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
           const draft = JSON.parse(saved) as { productColor?: string; pencilColor?: string; layers?: Layer[]; shirtSide?: ShirtSide; personalizations?: Personalization[]; colorVariants?: string[] };
           const savedColor = draft.productColor ?? draft.pencilColor;
           if (typeof savedColor === "string" && /^#[0-9a-fA-F]{6}$/.test(savedColor)) setProductColor(savedColor);
-          if (product === "shirts" && shirtSides.some((side) => side.id === draft.shirtSide)) setShirtSide(draft.shirtSide!);
-          if (product === "shirts" && Array.isArray(draft.personalizations)) setPersonalizations(draft.personalizations.filter((entry) => entry && typeof entry.name === "string" && typeof entry.number === "string" && typeof entry.size === "string").slice(0, 100));
+          if (product === "shirts" && !customPhoto && shirtSides.some((side) => side.id === draft.shirtSide)) setShirtSide(draft.shirtSide!);
+          if (product === "shirts" && !customPhoto && Array.isArray(draft.personalizations)) setPersonalizations(draft.personalizations.filter((entry) => entry && typeof entry.name === "string" && typeof entry.number === "string" && typeof entry.size === "string").slice(0, 100));
           if (product !== "lighters" && Array.isArray(draft.colorVariants)) setColorVariants(draft.colorVariants.filter((color) => typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color)).slice(0, 12));
           if (Array.isArray(draft.layers)) {
-            const valid = draft.layers.filter((layer) => layer && typeof layer.id === "string" && Number.isFinite(layer.x) && Number.isFinite(layer.y) && (layer.kind === "text" || layer.kind === "image"));
+            const valid = draft.layers.filter((layer) => layer && typeof layer.id === "string" && Number.isFinite(layer.x) && Number.isFinite(layer.y) && (layer.kind === "text" || layer.kind === "image") && (!customPhoto || (layer.side ?? "front") === "front"));
             setLayers(valid);
             setSelectedId(valid[0]?.id ?? null);
           }
@@ -101,7 +105,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
       setLoaded(true);
     });
     return () => { active = false; };
-  }, [STORAGE_KEY, catalogProductId, product]);
+  }, [STORAGE_KEY, catalogProductId, product, customPhoto]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -111,11 +115,11 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
 
   useEffect(() => {
     let active = true;
-    loadProductPhoto(product === "shirts" && shirtSide === "back" ? "/images/studio-shirt-back.png" : photoSources[product])
+    (catalogImageUrl ? loadImage(catalogImageUrl) : loadProductPhoto(product === "shirts" && shirtSide === "back" ? "/images/studio-shirt-back.png" : photoSources[product]))
       .then((photo) => { if (active) { photoRef.current = photo; setPhotoReady(true); } })
       .catch(() => { if (active) { setPhotoReady(true); setMessage("The product photo could not load. A simple preview is shown instead."); } });
     return () => { active = false; };
-  }, [product, shirtSide]);
+  }, [product, shirtSide, catalogImageUrl]);
 
   useEffect(() => {
     let active = true;
@@ -130,12 +134,12 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     for (const layer of layers) {
       if (layer.kind !== "image" || imagesRef.current.has(layer.src)) continue;
       const image = new Image();
-      image.onload = () => render(ctx, product, shirtSide, productColor, visibleLayers, viewMode === "edit" ? selectedId : null, imagesRef.current, viewMode === "edit", viewMode === "inspect", photoRef.current);
+      image.onload = () => render(ctx, product, shirtSide, productColor, visibleLayers, viewMode === "edit" ? selectedId : null, imagesRef.current, viewMode === "edit", viewMode === "inspect", photoRef.current, customArea);
       image.src = layer.src;
       imagesRef.current.set(layer.src, image);
     }
-    render(ctx, product, shirtSide, productColor, visibleLayers, viewMode === "edit" ? selectedId : null, imagesRef.current, viewMode === "edit", viewMode === "inspect", photoRef.current);
-  }, [layers, visibleLayers, productColor, selectedId, product, shirtSide, viewMode, photoReady, fontReady]);
+    render(ctx, product, shirtSide, productColor, visibleLayers, viewMode === "edit" ? selectedId : null, imagesRef.current, viewMode === "edit", viewMode === "inspect", photoRef.current, customArea);
+  }, [layers, visibleLayers, productColor, selectedId, product, shirtSide, viewMode, photoReady, fontReady, customArea]);
 
   function updateSelected(patch: Partial<Layer>) {
     if (!selectedId) return;
@@ -151,7 +155,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     rememberChange();
     setViewMode("edit");
     const id = crypto.randomUUID();
-    setLayers((current) => [...current, { id, kind: "text", text: "YOUR TEXT", color: "#000000", font: "PertySharpSans", x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: product === "lighters" ? .52 : product === "hats" ? .75 : product === "pens" ? .65 : product === "shirts" && shirtSide !== "front" && shirtSide !== "back" ? .55 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
+    setLayers((current) => [...current, { id, kind: "text", text: "YOUR TEXT", color: "#000000", font: "PertySharpSans", x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 210)) : product === "lighters" ? .52 : product === "hats" ? .75 : product === "pens" ? .65 : product === "shirts" && shirtSide !== "front" && shirtSide !== "back" ? .55 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
     setSelectedId(id);
   }
 
@@ -177,7 +181,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
       context.drawImage(image, 0, 0, 512, 512);
       rememberChange();
       const id = crypto.randomUUID();
-      setLayers((current) => [...current, { id, kind: "image", src: canvas.toDataURL("image/png"), aspect: 1, x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: product === "pens" ? .26 : product === "lighters" ? .8 : product === "shirts" && shirtSide !== "front" && shirtSide !== "back" ? .55 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
+      setLayers((current) => [...current, { id, kind: "image", src: canvas.toDataURL("image/png"), aspect: 1, x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 150)) : product === "pens" ? .26 : product === "lighters" ? .8 : product === "shirts" && shirtSide !== "front" && shirtSide !== "back" ? .55 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
       setSelectedId(id);
       setViewMode("edit");
       setMessage(`${icon.name} added to the ${product === "shirts" ? shirtSides.find((item) => item.id === shirtSide)?.label.toLowerCase() : config.singular}.`);
@@ -252,7 +256,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
         rememberChange();
         setViewMode("edit");
         const id = crypto.randomUUID();
-        setLayers((current) => [...current, { id, kind: "image", src: source, aspect: image.width / image.height, x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: product === "pens" ? .3 : product === "lighters" ? .85 : product === "shirts" && shirtSide !== "front" && shirtSide !== "back" ? .55 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
+        setLayers((current) => [...current, { id, kind: "image", src: source, aspect: image.width / image.height, x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 150)) : product === "pens" ? .3 : product === "lighters" ? .85 : product === "shirts" && shirtSide !== "front" && shirtSide !== "back" ? .55 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
         setSelectedId(id);
         setMessage(`${backgroundRemoved ? "Plain background removed. " : "Image added. "}Drag it on the ${config.singular} to place it.`);
       };
@@ -307,8 +311,8 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     const point = canvasPoint(event, canvas);
     setLayers((current) => current.map((layer) => layer.id === drag.id ? {
       ...layer,
-      x: Math.max(0, Math.min(WIDTH, point.x - drag.dx)),
-      y: Math.max(0, Math.min(HEIGHT, point.y - drag.dy)),
+      x: Math.max(customArea?.left ?? 0, Math.min(customArea?.right ?? WIDTH, point.x - drag.dx)),
+      y: Math.max(customArea?.top ?? 0, Math.min(customArea?.bottom ?? HEIGHT, point.y - drag.dy)),
     } : layer));
   }
 
@@ -325,8 +329,8 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     const step = event.shiftKey ? 10 : 2;
     setLayers((current) => current.map((layer) => layer.id === selectedId ? {
       ...layer,
-      x: Math.max(0, Math.min(WIDTH, layer.x + (event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0))),
-      y: Math.max(0, Math.min(HEIGHT, layer.y + (event.key === "ArrowDown" ? step : event.key === "ArrowUp" ? -step : 0))),
+      x: Math.max(customArea?.left ?? 0, Math.min(customArea?.right ?? WIDTH, layer.x + (event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0))),
+      y: Math.max(customArea?.top ?? 0, Math.min(customArea?.bottom ?? HEIGHT, layer.y + (event.key === "ArrowDown" ? step : event.key === "ArrowUp" ? -step : 0))),
     } : layer));
   }
 
@@ -367,7 +371,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     previewCanvas.height = HEIGHT;
     const previewContext = previewCanvas.getContext("2d");
     if (!previewContext) return null;
-    render(previewContext, product, shirtSide, productColor, visibleLayers, null, imagesRef.current, false, false, photoRef.current);
+    render(previewContext, product, shirtSide, productColor, visibleLayers, null, imagesRef.current, false, false, photoRef.current, customArea);
     const canvas = document.createElement("canvas");
     canvas.width = WIDTH * 2;
     canvas.height = HEIGHT * 2;
@@ -378,7 +382,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   }
 
   async function createRequestPreview(): Promise<{ png: string; height: number; side: ShirtSide | "overview" } | null> {
-    if (product !== "shirts") {
+    if (product !== "shirts" || customPhoto) {
       const png = createPreview();
       return png ? { png, height: HEIGHT, side: "front" } : null;
     }
@@ -521,15 +525,15 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     <main className="studio-page is-lab">
       <div className="studio-shell">
         <div className="studio-top"><Link href="/#shop-categories" className="studio-back">← Back to products</Link><span className="studio-badge">{canRequest ? "Design Lab · Request a quote" : "Design Lab · 18+ preview only"}</span></div>
-        <div className="studio-heading"><span className="store-kicker">{catalogName.toUpperCase()}</span><h1>Design {catalogName}.</h1><p>Choose a color, add your text or artwork, then drag it anywhere on the {config.singular}. Use your finger on a phone or tablet.</p><nav className="studio-product-nav" aria-label="Choose a product to design">{catalogProducts.map((item) => <Link key={item.id} href={`/design/${item.slug}`} aria-current={catalogProductId === item.id ? "page" : undefined}>{item.name}{item.age_restricted ? " 18+" : ""}</Link>)}</nav></div>
+        <div className="studio-heading"><span className="store-kicker">{catalogName.toUpperCase()}</span><h1>Design {catalogName}.</h1><p>{customPhoto ? "Add text or artwork, then drag it into the marked print area on this product photo." : `Choose a color, add your text or artwork, then drag it anywhere on the ${config.singular}.`} Use your finger on a phone or tablet.</p><nav className="studio-product-nav" aria-label="Choose a product to design">{catalogProducts.map((item) => <Link key={item.id} href={`/design/${item.slug}`} aria-current={catalogProductId === item.id ? "page" : undefined}>{item.name}{item.age_restricted ? " 18+" : ""}</Link>)}</nav></div>
         <div className="studio-grid">
-          <section className="studio-preview" aria-label={`${config.name} design preview`}>
-            <div className="studio-preview-header"><strong>Live preview</strong><span>{viewMode === "edit" ? "Drag artwork anywhere on the product" : "Drag the product to inspect it from an angle"}</span></div>
+          <section className="studio-preview" aria-label={`${catalogName} design preview`}>
+            <div className="studio-preview-header"><strong>Live preview</strong><span>{viewMode === "edit" ? customPhoto ? "Drag artwork inside the marked print area" : "Drag artwork anywhere on the product" : "Drag the product to inspect it from an angle"}</span></div>
             <div className="studio-view-toolbar">
               <div className="studio-view-tabs" role="group" aria-label="Preview mode"><button type="button" aria-pressed={viewMode === "edit"} onClick={() => setViewMode("edit")}>Edit design</button><button type="button" aria-pressed={viewMode === "inspect"} onClick={() => setViewMode("inspect")}>Angle view</button></div>
               <div className="studio-history"><button type="button" onClick={undo} disabled={!historyState.undo} aria-label="Undo">↶ Undo</button><button type="button" onClick={redo} disabled={!historyState.redo} aria-label="Redo">↷ Redo</button></div>
             </div>
-            {product === "shirts" && <div className="studio-side-switcher" role="group" aria-label="T-shirt print area">
+            {product === "shirts" && !customPhoto && <div className="studio-side-switcher" role="group" aria-label="T-shirt print area">
               {shirtSides.map((side) => <button key={side.id} type="button" aria-pressed={shirtSide === side.id} onClick={() => switchShirtSide(side.id)}>{side.label}<small>{layers.filter((layer) => (layer.side ?? "front") === side.id).length} designs</small></button>)}
             </div>}
             {selected && <div className="studio-selection-bar"><span>Selected: <strong>{selected.kind === "text" ? selected.text || "Untitled text" : "Uploaded image"}</strong></span><button type="button" onClick={deleteSelected}>Delete selected {selected.kind === "text" ? "text" : "image"}</button></div>}
@@ -539,20 +543,20 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
               </div>
             </div>
             <div className="studio-view-controls"><label>Zoom <strong>{Math.round(zoom * 100)}%</strong><input type="range" min="0.7" max="1.7" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>{viewMode === "inspect" && <><label>Turn <strong>{Math.round(yaw)}°</strong><input type="range" min="-65" max="65" value={yaw} onChange={(event) => setYaw(Number(event.target.value))} /></label><label>Tilt <strong>{Math.round(pitch)}°</strong><input type="range" min="-40" max="40" value={pitch} onChange={(event) => setPitch(Number(event.target.value))} /></label></>}<button type="button" onClick={() => { setYaw(-22); setPitch(13); setZoom(1); }}>Reset view</button></div>
-            <div className="studio-preview-footer"><span>{product === "shirts" ? `${shirtSides.find((side) => side.id === shirtSide)?.label} · ${visibleLayers.length} design layers` : viewMode === "edit" ? "Drag artwork to move it. Use the arrow keys for precise placement." : "Drag to turn the product. Switch to Edit design to move artwork."}</span><div className="studio-preview-actions"><button type="button" onClick={sharePreview}>Save / Share</button><button type="button" onClick={downloadPreview}>Download PNG</button>{canRequest && <a href="#send-design">Get a quote →</a>}</div></div>
+            <div className="studio-preview-footer"><span>{product === "shirts" && !customPhoto ? `${shirtSides.find((side) => side.id === shirtSide)?.label} · ${visibleLayers.length} design layers` : viewMode === "edit" ? "Drag artwork to move it. Use the arrow keys for precise placement." : "Drag to turn the product. Switch to Edit design to move artwork."}</span><div className="studio-preview-actions"><button type="button" onClick={sharePreview}>Save / Share</button><button type="button" onClick={downloadPreview}>Download PNG</button>{canRequest && <a href="#send-design">Get a quote →</a>}</div></div>
           </section>
-          <aside className="studio-shirt-tools" aria-label={`${config.singular} design tools`}>
-            <div className="shirt-tools-heading"><span>DESIGN LAB</span><h2>Make it yours.</h2><p>{product === "shirts" ? "Design the front, back, and sleeves of your T-shirt." : `Add a name, logo, or artwork to your ${config.singular}.`}</p></div>
+          <aside className="studio-shirt-tools" aria-label={`${catalogName} design tools`}>
+            <div className="shirt-tools-heading"><span>DESIGN LAB</span><h2>Make it yours.</h2><p>{customPhoto ? "Decorate the marked area on this product photo." : product === "shirts" ? "Design the front, back, and sleeves of your T-shirt." : `Add a name, logo, or artwork to your ${config.singular}.`}</p></div>
             <div className="shirt-tool-tabs" role="group" aria-label="Design tools">
               {([
-                ["product", "◉", "Product color"], ["text", "T", "Add text"], ["upload", "↑", "Upload"],
-                ["art", "✦", "Add art"], ...(product === "shirts" ? [["personalize", "#", "Names & numbers"]] as const : []), ["layers", "☷", "Layers"],
+                ...(!customPhoto ? [["product", "◉", "Product color"]] as const : []), ["text", "T", "Add text"], ["upload", "↑", "Upload"],
+                ["art", "✦", "Add art"], ...(product === "shirts" && !customPhoto ? [["personalize", "#", "Names & numbers"]] as const : []), ["layers", "☷", "Layers"],
               ] as const).map(([id, icon, label]) => <button type="button" key={id} aria-pressed={shirtTool === id} onClick={() => setShirtTool(id)}><span aria-hidden="true">{icon}</span>{label}</button>)}
             </div>
             <div className="shirt-tool-panel">
-              {shirtTool === "product" && <section><h3>Product color</h3><p>Choose a {config.singular} color and preview your design immediately.</p><div className="color-options">{productColors.map((color) => <button type="button" key={color.value} className={productColor === color.value ? "color-swatch active" : "color-swatch"} style={{ backgroundColor: color.value }} aria-label={color.name} aria-pressed={productColor === color.value} title={color.name} onClick={() => { rememberChange(); setProductColor(color.value); }} />)}</div><label className="custom-product-color">Custom {config.singular} color<input type="color" value={productColor} onPointerDown={rememberChange} onChange={(event) => setProductColor(event.target.value)} /></label><span className="tool-hint">{productColors.find((color) => color.value === productColor)?.name ?? productColor.toUpperCase()}</span>{canRequest && <><button className="shirt-secondary-action" type="button" onClick={() => { if (!colorVariants.includes(productColor) && colorVariants.length < 12) { rememberChange(); setColorVariants((current) => [...current, productColor]); } }}>+ Add this color to request</button>{colorVariants.length > 0 && <div className="shirt-color-variants">{colorVariants.map((color) => <button key={color} type="button" title={`Remove ${color}`} onClick={() => { rememberChange(); setColorVariants((current) => current.filter((item) => item !== color)); }}><i style={{ backgroundColor: color }} />{productColors.find((item) => item.value === color)?.name ?? color} ×</button>)}</div>}</>}</section>}
-              {shirtTool === "text" && <section><h3>Add text</h3><p>Add a line of text to the {product === "shirts" ? shirtSides.find((side) => side.id === shirtSide)?.label.toLowerCase() : config.singular}. Select it on the {config.singular} to change the font, shape, outline, and color.</p><button className="shirt-primary-action" type="button" onClick={addText}>+ Add text</button></section>}
-              {shirtTool === "upload" && <section><h3>Upload your artwork</h3><p>PNG, JPG, or WebP up to 1 MB. Plain light backgrounds are removed automatically. Transparent PNGs keep their transparency.</p><button className="shirt-primary-action" type="button" onClick={() => shirtUploadRef.current?.click()}>↑ Choose an image</button><input ref={shirtUploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="visually-hidden" onChange={uploadImage} /><p className="shirt-tool-note">You can also drag an image onto the {config.singular}.</p></section>}
+              {shirtTool === "product" && !customPhoto && <section><h3>Product color</h3><p>Choose a {config.singular} color and preview your design immediately.</p><div className="color-options">{productColors.map((color) => <button type="button" key={color.value} className={productColor === color.value ? "color-swatch active" : "color-swatch"} style={{ backgroundColor: color.value }} aria-label={color.name} aria-pressed={productColor === color.value} title={color.name} onClick={() => { rememberChange(); setProductColor(color.value); }} />)}</div><label className="custom-product-color">Custom {config.singular} color<input type="color" value={productColor} onPointerDown={rememberChange} onChange={(event) => setProductColor(event.target.value)} /></label><span className="tool-hint">{productColors.find((color) => color.value === productColor)?.name ?? productColor.toUpperCase()}</span>{canRequest && <><button className="shirt-secondary-action" type="button" onClick={() => { if (!colorVariants.includes(productColor) && colorVariants.length < 12) { rememberChange(); setColorVariants((current) => [...current, productColor]); } }}>+ Add this color to request</button>{colorVariants.length > 0 && <div className="shirt-color-variants">{colorVariants.map((color) => <button key={color} type="button" title={`Remove ${color}`} onClick={() => { rememberChange(); setColorVariants((current) => current.filter((item) => item !== color)); }}><i style={{ backgroundColor: color }} />{productColors.find((item) => item.value === color)?.name ?? color} ×</button>)}</div>}</>}</section>}
+              {shirtTool === "text" && <section><h3>Add text</h3><p>Add a line of text to the {customPhoto ? "marked area" : product === "shirts" ? shirtSides.find((side) => side.id === shirtSide)?.label.toLowerCase() : config.singular}. Select it on the {customPhoto ? "photo" : config.singular} to change the font, shape, outline, and color.</p><button className="shirt-primary-action" type="button" onClick={addText}>+ Add text</button></section>}
+              {shirtTool === "upload" && <section><h3>Upload your artwork</h3><p>PNG, JPG, or WebP up to 1 MB. Plain light backgrounds are removed automatically. Transparent PNGs keep their transparency.</p><button className="shirt-primary-action" type="button" onClick={() => shirtUploadRef.current?.click()}>↑ Choose an image</button><input ref={shirtUploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="visually-hidden" onChange={uploadImage} /><p className="shirt-tool-note">You can also drag an image onto the {customPhoto ? "photo" : config.singular}.</p></section>}
               {shirtTool === "art" && <section><h3>Add art</h3><p>Pick a shape, then place and resize it on the {config.singular}.</p><label className="shirt-art-color">Art color<input type="color" value={artColor} onChange={(event) => setArtColor(event.target.value)} /></label><div className="shirt-art-grid">{artIcons.map((icon) => <button key={icon.id} type="button" onClick={() => addArt(icon)} title={`Add ${icon.name}`}><svg viewBox="0 0 100 100" aria-hidden="true"><path d={icon.path} fill={artColor} /></svg><span>{icon.name}</span></button>)}</div></section>}
               {shirtTool === "personalize" && <section><h3>Names & numbers</h3><p>Add one person at a time. The back preview shows the first entry; all entries are sent to our team.</p><div className="shirt-roster-fields"><label>Name<input value={rosterName} maxLength={40} onChange={(event) => setRosterName(event.target.value)} placeholder="Name" /></label><label>Number<input value={rosterNumber} maxLength={8} onChange={(event) => setRosterNumber(event.target.value)} placeholder="00" /></label><label>Size<select value={rosterSize} onChange={(event) => setRosterSize(event.target.value)}>{["YS", "YM", "YL", "S", "M", "L", "XL", "2XL", "3XL"].map((size) => <option key={size}>{size}</option>)}</select></label></div><button className="shirt-primary-action" type="button" onClick={addPersonalization}>+ Add person</button>{personalizations.length > 0 && <ul className="shirt-roster-list">{personalizations.map((entry, index) => <li key={`${entry.name}-${entry.number}-${index}`}><span>{entry.name || "—"} · #{entry.number || "—"} · {entry.size}</span><button type="button" onClick={() => removePersonalization(index)} aria-label={`Remove ${entry.name || entry.number}`}>×</button></li>)}</ul>}</section>}
               {shirtTool === "layers" && <section><h3>{product === "shirts" ? shirtSides.find((side) => side.id === shirtSide)?.label : config.name} layers</h3><p>Select a layer to edit or remove it.</p>{visibleLayers.length ? <div className="layer-list">{visibleLayers.map((layer) => <button type="button" key={layer.id} className={layer.id === selectedId ? "active" : ""} onClick={() => setSelectedId(layer.id)}>{layer.kind === "text" ? `T  ${layer.text || "Untitled text"}` : "▧  Artwork"}</button>)}</div> : <p className="shirt-tool-note">No designs on this area yet.</p>}</section>}

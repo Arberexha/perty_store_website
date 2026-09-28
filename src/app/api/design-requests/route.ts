@@ -21,8 +21,8 @@ export async function POST(request: NextRequest) {
   const parsed = designRequestSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Check your contact details and design, then try again" }, { status: 400 });
   const input = parsed.data;
-  const catalog = await getPool().query<{ name: string; design_template: string; age_restricted: boolean }>(
-    "SELECT name,design_template,age_restricted FROM products WHERE id=$1 AND status='published'",
+  const catalog = await getPool().query<{ name: string; design_template: string; age_restricted: boolean; has_mockup: boolean }>(
+    "SELECT name,design_template,age_restricted,(mockup_image IS NOT NULL) AS has_mockup FROM products WHERE id=$1 AND status='published'",
     [input.catalogProductId],
   );
   const selectedProduct = catalog.rows[0];
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [
     id, user?.id ?? null, input.product, input.catalogProductId, selectedProduct.name, input.customerName, input.customerEmail.toLowerCase(),
     input.customerPhone, input.quantity, input.notes, input.productColor,
-    JSON.stringify({ layers: input.layers, personalizations: input.personalizations ?? [], previewSide: input.previewSide ?? "front", previewHeight: input.previewHeight ?? 420, productColors: input.productColors ?? [input.productColor] }), preview,
+    JSON.stringify({ layers: input.layers, personalizations: input.personalizations ?? [], previewSide: input.previewSide ?? "front", previewHeight: input.previewHeight ?? 420, productColors: input.productColors ?? [input.productColor], photoMockup: selectedProduct.has_mockup }), preview,
   ]);
   revalidatePath("/admin/design-requests");
   return NextResponse.json({ id }, { status: 201 });

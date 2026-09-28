@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import sharp from "sharp";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/guard";
@@ -8,6 +9,8 @@ import { getPool } from "@/lib/db";
 import { parseEuro, slugify } from "@/lib/admin/format";
 import { productOrderingError } from "@/lib/admin/policy";
 import { isDesignTemplate } from "@/lib/catalog-config";
+import { DEFAULT_PRINT_AREA, MAX_MOCKUP_BYTES, mockupMime, validPrintArea } from "@/lib/product-mockup";
+import type { PrintArea } from "@/lib/product-mockup";
 
 class InputError extends Error {}
 
@@ -35,6 +38,33 @@ function euroAmount(form: FormData, key: string, optional = false): number | nul
   const amount = parseEuro(raw);
   if (amount == null) throw new InputError(`Enter a valid ${key.replaceAll("_", " ")} in euros`);
   return amount;
+}
+
+async function mockupInput(form: FormData): Promise<{ bytes: Buffer | null; mime: string | null; area: PrintArea }> {
+  const upload = form.get("mockup_image");
+  let bytes: Buffer | null = null;
+  let mime: string | null = null;
+  if (upload instanceof File && upload.size > 0) {
+    if (upload.size > MAX_MOCKUP_BYTES) throw new InputError("Product photo must be 5 MB or smaller");
+    bytes = Buffer.from(await upload.arrayBuffer());
+    mime = mockupMime(bytes);
+    if (!mime || upload.type !== mime) throw new InputError("Choose a valid PNG, JPG, or WebP product photo");
+    try {
+      const image = sharp(bytes, { failOn: "error", limitInputPixels: 20_000_000 });
+      const metadata = await image.metadata();
+      if (!metadata.width || !metadata.height) throw new Error("Missing image dimensions");
+      bytes = await image.rotate().resize({ width: 2400, height: 2400, fit: "inside", withoutEnlargement: true }).webp({ quality: 90 }).toBuffer();
+      mime = "image/webp";
+    } catch {
+      throw new InputError("Product photo could not be opened. Choose a valid PNG, JPG, or WebP image");
+    }
+  }
+  const coordinates = ["left", "top", "right", "bottom"].map((side) => Number(form.get(`print_${side}`)));
+  const area = ["left", "top", "right", "bottom"].every((side) => form.has(`print_${side}`)) && coordinates.every((value) => Number.isFinite(value))
+    ? { left: coordinates[0], top: coordinates[1], right: coordinates[2], bottom: coordinates[3] }
+    : DEFAULT_PRINT_AREA;
+  if (!validPrintArea(area)) throw new InputError("Choose a valid print area inside the product photo");
+  return { bytes, mime, area };
 }
 
 async function audit(actorId: string, action: string, entityType: string, entityId: string) {
@@ -78,8 +108,9 @@ export async function createProduct(form: FormData) {
     if (!category.rows[0]) throw new InputError("Choose a category");
     const template = text(form, "design_template", 20);
     if (!isDesignTemplate(template)) throw new InputError("Choose a design studio");
+    const mockup = await mockupInput(form);
     const id = randomUUID();
-    await getPool().query(`INSERT INTO products (id,category_id,name,slug,description,age_restricted,minimum_quantity,design_template) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [id, categoryId, name, slug, optionalText(form, "description"), category.rows[0].age_restricted || template === "lighters", positiveInteger(form, "minimum_quantity"), template]);
+    await getPool().query(`INSERT INTO products (id,category_id,name,slug,description,age_restricted,minimum_quantity,design_template,mockup_image,mockup_mime,print_area) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [id, categoryId, name, slug, optionalText(form, "description"), category.rows[0].age_restricted || template === "lighters", positiveInteger(form, "minimum_quantity"), template, mockup.bytes, mockup.mime, JSON.stringify(mockup.area)]);
     await audit(actor, "created", "product", id);
   });
 }
@@ -94,6 +125,7 @@ export async function updateProduct(form: FormData) {
     if (!["draft", "published", "archived"].includes(status)) throw new InputError("Choose a valid status");
     const template = text(form, "design_template", 20);
     if (!isDesignTemplate(template)) throw new InputError("Choose a design studio before publishing");
+    const mockup = await mockupInput(form);
     const ageRestricted = category.rows[0].age_restricted || template === "lighters" || form.has("age_restricted");
     const orderable = form.has("ordering_enabled");
     if (orderable) {
@@ -101,7 +133,8 @@ export async function updateProduct(form: FormData) {
       const error = productOrderingError({ ageRestricted, categoryRestricted: category.rows[0].age_restricted, status, hasPricedActiveVariant: Boolean(priced.rowCount) });
       if (error) throw new InputError(error);
     }
-    const result = await getPool().query(`UPDATE products SET category_id=$2,name=$3,description=$4,status=$5,ordering_enabled=$6,age_restricted=$7,minimum_quantity=$8,design_template=$9,updated_at=now() WHERE id=$1`, [id, categoryId, text(form, "name", 120), optionalText(form, "description"), status, orderable, ageRestricted, positiveInteger(form, "minimum_quantity"), template]);
+    const removeMockup = form.has("remove_mockup");
+    const result = await getPool().query(`UPDATE products SET category_id=$2,name=$3,description=$4,status=$5,ordering_enabled=$6,age_restricted=$7,minimum_quantity=$8,design_template=$9,print_area=$10,mockup_image=CASE WHEN $13 THEN NULL WHEN $11::bytea IS NOT NULL THEN $11 ELSE mockup_image END,mockup_mime=CASE WHEN $13 THEN NULL WHEN $12::text IS NOT NULL THEN $12 ELSE mockup_mime END,updated_at=now() WHERE id=$1`, [id, categoryId, text(form, "name", 120), optionalText(form, "description"), status, orderable, ageRestricted, positiveInteger(form, "minimum_quantity"), template, JSON.stringify(mockup.area), mockup.bytes, mockup.mime, removeMockup]);
     if (!result.rowCount) throw new InputError("Product not found");
     await audit(actor, "updated", "product", id);
   });

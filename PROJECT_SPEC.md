@@ -1,6 +1,6 @@
 # Custom printing shop — draft project specification
 
-Status: **storefront, accounts, preview studios, and admin management implemented**. Admin products marked Published appear on the storefront using one of four existing studios: pens, T-shirts, hats, or lighters. Customers can submit designs for non-restricted products as requests; staff can review the selected catalog product, preview, and original uploaded images in admin. Lighters are 18+ previews only. Confirmed checkout, payment integration, custom product mockups, and production file handling remain in later milestones. Product naming and launch language remain open decisions.
+Status: **storefront, accounts, preview studios, and admin management implemented**. Admin products marked Published appear on the storefront using one of four existing studios: pens, T-shirts, hats, or lighters. Admin can upload a front product photo and set a rectangular print area for customer text and artwork. Customers can submit designs for non-restricted products as requests; staff can review the selected catalog product, preview, and original uploaded artwork in admin. Lighters are 18+ previews only. Confirmed checkout, payment integration, multi-view custom product mockups, and production file handling remain in later milestones. Product naming and launch language remain open decisions.
 
 ## Goal and launch scope
 

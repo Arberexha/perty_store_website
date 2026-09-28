@@ -1,6 +1,7 @@
 import type { PointerEvent } from "react";
 import { HEIGHT, WIDTH, printArea } from "./model";
 import type { Layer, Product, ShirtSide, TextLayer } from "./model";
+import type { PrintArea } from "@/lib/product-mockup";
 
 function drawPen(ctx: CanvasRenderingContext2D, productColor: string, transparent = false) {
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
@@ -125,6 +126,16 @@ function drawPhotoProduct(ctx: CanvasRenderingContext2D, product: Product, color
   ctx.putImageData(image, 0, 0);
 }
 
+function drawCustomPhoto(ctx: CanvasRenderingContext2D, photo: HTMLImageElement) {
+  ctx.clearRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  const scale = Math.min(WIDTH / photo.naturalWidth, HEIGHT / photo.naturalHeight);
+  const width = photo.naturalWidth * scale;
+  const height = photo.naturalHeight * scale;
+  ctx.drawImage(photo, (WIDTH - width) / 2, (HEIGHT - height) / 2, width, height);
+}
+
 function drawProduct(ctx: CanvasRenderingContext2D, product: Product, color: string, transparent = false, photo?: HTMLImageElement | null) {
   if (photo?.complete && photo.naturalWidth) return drawPhotoProduct(ctx, product, color, photo);
   if (product === "pens") return drawPen(ctx, color, transparent);
@@ -220,9 +231,11 @@ export function render(
   showGuides: boolean,
   transparent = false,
   photo?: HTMLImageElement | null,
+  customArea?: PrintArea | null,
 ) {
-  const PRINT = printArea(product, side);
-  drawProduct(ctx, product, productColor, transparent, photo);
+  const PRINT = customArea ?? printArea(product, side);
+  if (customArea && photo?.complete && photo.naturalWidth) drawCustomPhoto(ctx, photo);
+  else drawProduct(ctx, product, productColor, transparent, photo);
   const artwork = document.createElement("canvas");
   artwork.width = WIDTH;
   artwork.height = HEIGHT;
@@ -248,13 +261,14 @@ export function render(
   const pixels = base.data;
   // Artwork can sit anywhere on the product; the photo's surface mask keeps it
   // off the backdrop, metal parts, skin and denim.
-  const surface = photo ? tintSources.get(photo)?.alpha : undefined;
+  const surface = photo && !customArea ? tintSources.get(photo)?.alpha : undefined;
   const centerX = Math.round((PRINT.left + PRINT.right) / 2);
   const centerY = Math.round((PRINT.top + PRINT.bottom) / 2);
   const center = (centerY * WIDTH + centerX) * 4;
   const reference = Math.max(1, .2126 * pixels[center] + .7152 * pixels[center + 1] + .0722 * pixels[center + 2]);
   for (let i = 0; i < pixels.length; i += 4) {
     if (!print[i + 3]) continue;
+    if (customArea && ((i / 4) % WIDTH < PRINT.left || (i / 4) % WIDTH > PRINT.right || Math.floor(i / 4 / WIDTH) < PRINT.top || Math.floor(i / 4 / WIDTH) > PRINT.bottom)) continue;
     const coverage = surface ? surface[i / 4] / 255 : 1;
     if (!coverage) continue;
     const light = .2126 * pixels[i] + .7152 * pixels[i + 1] + .0722 * pixels[i + 2];
@@ -265,6 +279,14 @@ export function render(
     }
   }
   ctx.putImageData(base, 0, 0);
+  if (showGuides && customArea) {
+    ctx.save();
+    ctx.strokeStyle = "#e4572e";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 5]);
+    ctx.strokeRect(PRINT.left, PRINT.top, PRINT.right - PRINT.left, PRINT.bottom - PRINT.top);
+    ctx.restore();
+  }
   if (showGuides && selectedId) {
     const layer = layers.find((item) => item.id === selectedId);
     if (layer) {
