@@ -31,6 +31,17 @@ export const designRequestSchema = z.object({
 
 export type DesignRequestInput = z.infer<typeof designRequestSchema>;
 
+export function validatedDesignAssets(input: DesignRequestInput): { preview: Buffer; error?: never } | { preview?: never; error: string } {
+  if (input.layers.some((layer) => layer.kind === "image" && !decodeDesignImage(layer.src))) {
+    return { error: "An uploaded image could not be saved. Please use a PNG, JPG, or WebP file under 1 MB." };
+  }
+  const preview = Buffer.from(input.previewPng.slice("data:image/png;base64,".length), "base64");
+  if (preview.length < 100 || preview.length > 2_000_000 || !preview.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    return { error: "The design preview could not be saved. Try downloading it first." };
+  }
+  return { preview };
+}
+
 export function decodeDesignImage(source: string): { mimeType: "image/png" | "image/jpeg" | "image/webp"; bytes: Buffer } | null {
   const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(source);
   if (!match) return null;

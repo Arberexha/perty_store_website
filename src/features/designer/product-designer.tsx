@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent, PointerEvent } from "react";
+import type { OrderOptions } from "@/lib/order-options";
+import OrderCheckout from "./order-checkout";
+import type { OrderDetails } from "./order-checkout";
 import { removePlainBackground } from "@/lib/remove-plain-background";
 import { DEFAULT_PRINT_AREA } from "@/lib/product-mockup";
 import type { PrintArea } from "@/lib/product-mockup";
@@ -12,11 +15,12 @@ import { canvasPoint, hitLayer, loadImage, loadProductPhoto, render } from "./ca
 
 const legacyProductIds: Record<Product, string> = { pens: "product-pen", shirts: "product-tshirt", hats: "product-hat", lighters: "product-lighter" };
 
-export default function ProductDesigner({ product, catalogProductId, catalogName, catalogAgeRestricted, catalogImageUrl, catalogPrintArea, catalogProducts }: { product: Product; catalogProductId: string; catalogName: string; catalogAgeRestricted: boolean; catalogImageUrl: string | null; catalogPrintArea: PrintArea | null; catalogProducts: { id: string; name: string; slug: string; design_template: Product; age_restricted: boolean }[] }) {
+export default function ProductDesigner({ product, catalogProductId, catalogName, catalogAgeRestricted, catalogImageUrl, catalogPrintArea, catalogProducts, orderOptions, minimumQuantity, customer }: { product: Product; catalogProductId: string; catalogName: string; catalogAgeRestricted: boolean; catalogImageUrl: string | null; catalogPrintArea: PrintArea | null; catalogProducts: { id: string; name: string; slug: string; design_template: Product; age_restricted: boolean }[]; orderOptions: OrderOptions | null; minimumQuantity: number; customer: { name: string; email: string } | null }) {
   const config = products[product];
   const customPhoto = Boolean(catalogImageUrl);
   const customArea = customPhoto ? (catalogPrintArea ?? DEFAULT_PRINT_AREA) : null;
   const canRequest = product !== "lighters" && !catalogAgeRestricted;
+  const canOrder = canRequest && Boolean(orderOptions?.variants.length);
   const [shirtSide, setShirtSide] = useState<ShirtSide>("front");
   const [shirtTool, setShirtTool] = useState<ShirtTool>(customPhoto ? "text" : "product");
   const [artColor, setArtColor] = useState("#0000ee");
@@ -50,6 +54,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   const [message, setMessage] = useState(`Move a design directly on the ${config.singular} with your finger or mouse.`);
   const [submitting, setSubmitting] = useState(false);
   const [submittedId, setSubmittedId] = useState<string | null>(null);
+  const [placedId, setPlacedId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const visibleLayers = useMemo(() => product === "shirts" ? layers.filter((layer) => (layer.side ?? "front") === shirtSide) : layers, [product, layers, shirtSide]);
   const selected = visibleLayers.find((layer) => layer.id === selectedId) ?? null;
@@ -474,6 +479,31 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     }
   }
 
+  async function placeOrder(details: OrderDetails) {
+    if (submitting || placedId || !canOrder) return;
+    setSubmitError(null);
+    if (!layers.length || layers.some((layer) => layer.kind === "text" && !layer.text.trim())) { setSubmitError("Add a design and make sure text layers are not empty before ordering."); return; }
+    if (layers.some((layer) => layer.kind === "image" && !imagesRef.current.get(layer.src)?.naturalWidth)) { setSubmitError("Wait for your uploaded image to finish loading, then try again."); return; }
+    if (personalizations.length && personalizations.length !== details.quantity) { setSubmitError("Quantity must match the number of personalized shirts."); return; }
+    setSubmitting(true);
+    try {
+      const preview = await createRequestPreview();
+      if (!preview) throw new Error("The preview could not be created. Please try again.");
+      const response = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        ...details, product, catalogProductId, productColor, layers,
+        personalizations: product === "shirts" ? personalizations : undefined,
+        previewSide: product === "shirts" ? preview.side : undefined,
+        previewHeight: product === "shirts" ? preview.height : undefined,
+        productColors: [...new Set([productColor, ...colorVariants])], previewPng: preview.png,
+      }) });
+      const result = await response.json().catch(() => null) as { id?: string; error?: string } | null;
+      if (!response.ok || !result?.id) throw new Error(result?.error ?? "Could not place your order. Please try again.");
+      setPlacedId(result.id);
+      setMessage("Your order was placed. The shop will contact you about payment and fulfillment.");
+    } catch (error) { setSubmitError(error instanceof Error ? error.message : "Could not place your order. Please try again."); }
+    finally { setSubmitting(false); }
+  }
+
   function resetDesign() {
     rememberChange();
     setLayers([]);
@@ -524,7 +554,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   return (
     <main className="studio-page is-lab">
       <div className="studio-shell">
-        <div className="studio-top"><Link href="/#shop-categories" className="studio-back">← Back to products</Link><span className="studio-badge">{canRequest ? "Design Lab · Request a quote" : "Design Lab · 18+ preview only"}</span></div>
+        <div className="studio-top"><Link href="/#shop-categories" className="studio-back">← Back to products</Link><span className="studio-badge">{canOrder ? "Design Lab · Order online" : canRequest ? "Design Lab · Request a quote" : "Design Lab · 18+ preview only"}</span></div>
         <div className="studio-heading"><span className="store-kicker">{catalogName.toUpperCase()}</span><h1>Design {catalogName}.</h1><p>{customPhoto ? "Add text or artwork, then drag it into the marked print area on this product photo." : `Choose a color, add your text or artwork, then drag it anywhere on the ${config.singular}.`} Use your finger on a phone or tablet.</p><nav className="studio-product-nav" aria-label="Choose a product to design">{catalogProducts.map((item) => <Link key={item.id} href={`/design/${item.slug}`} aria-current={catalogProductId === item.id ? "page" : undefined}>{item.name}{item.age_restricted ? " 18+" : ""}</Link>)}</nav></div>
         <div className="studio-grid">
           <section className="studio-preview" aria-label={`${catalogName} design preview`}>
@@ -543,7 +573,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
               </div>
             </div>
             <div className="studio-view-controls"><label>Zoom <strong>{Math.round(zoom * 100)}%</strong><input type="range" min="0.7" max="1.7" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>{viewMode === "inspect" && <><label>Turn <strong>{Math.round(yaw)}°</strong><input type="range" min="-65" max="65" value={yaw} onChange={(event) => setYaw(Number(event.target.value))} /></label><label>Tilt <strong>{Math.round(pitch)}°</strong><input type="range" min="-40" max="40" value={pitch} onChange={(event) => setPitch(Number(event.target.value))} /></label></>}<button type="button" onClick={() => { setYaw(-22); setPitch(13); setZoom(1); }}>Reset view</button></div>
-            <div className="studio-preview-footer"><span>{product === "shirts" && !customPhoto ? `${shirtSides.find((side) => side.id === shirtSide)?.label} · ${visibleLayers.length} design layers` : viewMode === "edit" ? "Drag artwork to move it. Use the arrow keys for precise placement." : "Drag to turn the product. Switch to Edit design to move artwork."}</span><div className="studio-preview-actions"><button type="button" onClick={sharePreview}>Save / Share</button><button type="button" onClick={downloadPreview}>Download PNG</button>{canRequest && <a href="#send-design">Get a quote →</a>}</div></div>
+            <div className="studio-preview-footer"><span>{product === "shirts" && !customPhoto ? `${shirtSides.find((side) => side.id === shirtSide)?.label} · ${visibleLayers.length} design layers` : viewMode === "edit" ? "Drag artwork to move it. Use the arrow keys for precise placement." : "Drag to turn the product. Switch to Edit design to move artwork."}</span><div className="studio-preview-actions"><button type="button" onClick={sharePreview}>Save / Share</button><button type="button" onClick={downloadPreview}>Download PNG</button>{canRequest && <a href="#send-design">{canOrder ? "Place order →" : "Get a quote →"}</a>}</div></div>
           </section>
           <aside className="studio-shirt-tools" aria-label={`${catalogName} design tools`}>
             <div className="shirt-tools-heading"><span>DESIGN LAB</span><h2>Make it yours.</h2><p>{customPhoto ? "Decorate the marked area on this product photo." : product === "shirts" ? "Design the front, back, and sleeves of your T-shirt." : `Add a name, logo, or artwork to your ${config.singular}.`}</p></div>
@@ -569,15 +599,15 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
           </aside>
         </div>
         {canRequest && <section className="studio-order-request" id="send-design" aria-labelledby="send-design-title">
-          <div><span className="store-kicker">WHEN YOUR DESIGN IS READY</span><h2 id="send-design-title">Send it to our team.</h2><p>We will review your design and contact you to confirm options, price, and delivery or pickup. Sending this request does not place a paid order.</p></div>
-          {submittedId ? <div className="studio-order-success" role="status"><strong>Design request sent</strong><p>Reference <code>#{submittedId.slice(0, 8)}</code>. Our team can now see your design in the admin panel and will contact you using the email provided.</p><button type="button" onClick={() => { setSubmittedId(null); setSubmitError(null); }}>Send another request</button></div> : <form onSubmit={submitDesign} className="studio-order-form">
+          <div><span className="store-kicker">WHEN YOUR DESIGN IS READY</span><h2 id="send-design-title">{canOrder ? "Place your order." : "Send it to our team."}</h2><p>{canOrder ? "Choose your product option, quantity, and pickup or delivery. Review the total before placing an unpaid order. The shop will contact you about payment and fulfillment." : "We will review your design and contact you to confirm options, price, and delivery or pickup. Sending this request does not place a paid order."}</p></div>
+          {canOrder && orderOptions ? <OrderCheckout options={orderOptions} minimumQuantity={minimumQuantity} customer={customer} submitting={submitting} error={submitError} placedId={placedId} onPlace={placeOrder} /> : submittedId ? <div className="studio-order-success" role="status"><strong>Design request sent</strong><p>Reference <code>#{submittedId.slice(0, 8)}</code>. Our team can now see your design in the admin panel and will contact you using the email provided.</p><button type="button" onClick={() => { setSubmittedId(null); setSubmitError(null); }}>Send another request</button></div> : <form onSubmit={submitDesign} className="studio-order-form">
             <div className="studio-order-fields"><label>Your name<input name="customer_name" type="text" autoComplete="name" required minLength={2} maxLength={120} /></label><label>Email address<input name="customer_email" type="email" autoComplete="email" required maxLength={254} /></label><label>Phone (optional)<input name="customer_phone" type="tel" autoComplete="tel" maxLength={40} /></label><label>Quantity<input name="quantity" type="number" min={1} max={1000} defaultValue={1} required /></label></div>
             <label>Notes for the team<textarea name="notes" rows={3} maxLength={2000} placeholder="Sizes, deadline, delivery area, or anything else we should know" /></label>
             {submitError && <p className="studio-order-error" role="alert">{submitError}</p>}
             <button type="submit" disabled={submitting}>{submitting ? "Sending design…" : "Send design request"}</button>
           </form>}
         </section>}
-        <p className="studio-message" role="status">{message}</p><p className="studio-disclaimer">This editor creates a visual preview and saves your draft in this browser. {canRequest ? "Design requests are reviewed by staff before price, production, or delivery is confirmed." : "This 18+ product cannot be ordered online."}</p>
+        <p className="studio-message" role="status">{message}</p><p className="studio-disclaimer">This editor creates a visual preview and saves your draft in this browser. {canOrder ? "Orders are placed without online payment. The shop will contact you about payment and fulfillment." : canRequest ? "Design requests are reviewed by staff before price, production, or delivery is confirmed." : "This 18+ product cannot be ordered online."}</p>
       </div>
     </main>
   );

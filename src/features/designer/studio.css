@@ -12,6 +12,12 @@
 @media(max-width:900px){.studio-order-request{grid-template-columns:1fr;gap:15px}}
 @media(max-width:500px){.studio-order-request{padding:22px}.studio-order-fields{grid-template-columns:1fr}}
 .studio-order-success button{margin-top:10px;border:1px solid var(--green);background:white;color:var(--green);padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.studio-order-form select{width:100%;min-width:0;border:1px solid #bfc9bb;background:white;padding:11px 12px;color:var(--ink);font:400 13px Arial,sans-serif}
+.studio-order-totals{display:grid;grid-template-columns:1fr auto;gap:9px 20px;padding:18px;border:1px solid var(--line);background:#f7f7f2;font-size:14px}
+.studio-order-totals strong{text-align:right}
+.studio-order-totals span:nth-last-child(2),.studio-order-totals strong:last-child{padding-top:10px;border-top:1px solid var(--line);font-size:17px}
+.studio-order-form .studio-order-confirm{flex-direction:row;align-items:flex-start;gap:10px;font-weight:400;line-height:1.4}
+.studio-order-confirm input{width:auto;margin:2px 0 0;flex:none}
 @media(min-width:1001px){.studio-grid{grid-template-columns:320px minmax(0,1fr)}.studio-tools{grid-column:1;grid-row:1}.studio-preview{grid-column:2;grid-row:1}.studio-shell{width:min(100% - 70px,1580px)}}
 
 @font-face{font-family:PertySharpSans;src:url('/fonts/SharpSans-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
