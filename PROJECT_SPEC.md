@@ -44,6 +44,6 @@ Customers can create an account and view their orders; guest checkout will also 
 2. **Catalogue and admin (partly implemented):** Admin dashboard, product/variant/price management, category restrictions, pickup and shipping settings, quotes, orders, files, customers, and audit records are implemented. Storefront browsing, product mockups, and print areas remain. Verify product-specific option and pricing behavior.
 3. **Design editor and files:** Private artwork upload, file validation, editor, saved layout/preview, and safe file retrieval for admin. Verify invalid files, bounds, and reopening saved designs.
 4. **Checkout and payments (partly implemented):** Direct order placement from the designer, server-calculated totals, delivery/pickup, order creation, account order history, and admin artwork review are implemented. Cart, payment-provider integration, callback handling, and customer notifications remain. Verify duplicate or failed payment notifications when payments are added.
-5. **Operations and launch:** Order, quote, customer, and fulfillment dashboards; notifications; end-to-end checks; deployment instructions and production configuration.
+5. **Operations and launch:** Order, quote, customer, and fulfillment dashboards; order receipt and cancellation emails are implemented. Other status notifications, broader end-to-end checks, deployment instructions, and production configuration remain.
 
 Each milestone will include a summary of changed files, run instructions, test results, and the next decision needed from the owner.

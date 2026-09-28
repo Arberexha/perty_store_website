@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/guard";
 import { getPool } from "@/lib/db";
+import { loadOrderEmailDetails } from "@/lib/email/order-data";
+import { sendOrderCancellation } from "@/lib/email/order-confirmation";
 import { parseEuro, slugify } from "@/lib/admin/format";
 import { productOrderingError } from "@/lib/admin/policy";
 import { isDesignTemplate } from "@/lib/catalog-config";
@@ -229,9 +231,39 @@ export async function updateOrder(form: FormData) {
     const id = text(form, "id", 100);
     const status = text(form, "status", 30);
     if (!["new", "in_production", "ready", "shipped", "completed", "cancelled"].includes(status)) throw new InputError("Choose a valid order status");
-    const result = await getPool().query("UPDATE orders SET status=$2,admin_note=$3,updated_at=now() WHERE id=$1", [id, status, optionalText(form, "admin_note")]);
-    if (!result.rowCount) throw new InputError("Order not found");
-    await audit(actor, "updated", "order", id);
+    const note = optionalText(form, "admin_note");
+    const client = await getPool().connect();
+    let newlyCancelled = false;
+    try {
+      await client.query("BEGIN");
+      const previous = await client.query<{ status: string }>("SELECT status FROM orders WHERE id=$1 FOR UPDATE", [id]);
+      if (!previous.rows[0]) throw new InputError("Order not found");
+      newlyCancelled = status === "cancelled" && previous.rows[0].status !== "cancelled";
+      await client.query(`UPDATE orders SET status=$2,admin_note=$3,updated_at=now(),
+        cancellation_email_status=CASE WHEN $4 THEN 'pending' WHEN $2 <> 'cancelled' THEN 'not_requested' ELSE cancellation_email_status END,
+        cancellation_email_sent_at=CASE WHEN $4 OR $2 <> 'cancelled' THEN NULL ELSE cancellation_email_sent_at END
+        WHERE id=$1`, [id, status, note, newlyCancelled]);
+      await client.query("INSERT INTO admin_audit_log (id,actor_user_id,action,entity_type,entity_id) VALUES ($1,$2,$3,$4,$5)", [randomUUID(), actor, "updated", "order", id]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { client.release(); }
+    if (!newlyCancelled) return;
+    let emailStatus: "sent" | "failed" | "not_configured";
+    try {
+      const order = await loadOrderEmailDetails(id);
+      if (!order) throw new Error("Order email details unavailable");
+      emailStatus = await sendOrderCancellation(order);
+    } catch (error) {
+      emailStatus = "failed";
+      console.error("Order cancellation email failed", { orderId: id, error });
+    }
+    await getPool().query("UPDATE orders SET cancellation_email_status=$2,cancellation_email_sent_at=CASE WHEN $2='sent' THEN now() ELSE NULL END WHERE id=$1", [id, emailStatus]);
+    if (emailStatus !== "sent") {
+      revalidatePath("/admin/orders");
+      throw new InputError(emailStatus === "not_configured" ? "Order cancelled, but email is not configured." : "Order cancelled, but the email could not be sent.");
+    }
   });
 }
 

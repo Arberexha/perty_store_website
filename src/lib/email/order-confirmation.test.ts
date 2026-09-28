@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import nodemailer from "nodemailer";
 import { createServer } from "node:net";
 import { once } from "node:events";
-import { orderConfirmationMail, orderConfirmationMessage, sendOrderConfirmation } from "./order-confirmation";
+import { orderCancellationMail, orderCancellationMessage, orderConfirmationMail, orderConfirmationMessage, sendOrderCancellation, sendOrderConfirmation } from "./order-confirmation";
 import type { OrderConfirmation } from "./order-confirmation";
 
 const order: OrderConfirmation = {
@@ -35,7 +35,20 @@ describe("order confirmation email", () => {
     expect(raw).toContain("alex@example.test");
     expect(raw).toContain("Content-Type: image/png");
     expect(raw).toContain("Content-ID: <order-design-preview>");
-    expect(raw).toContain(order.previewPng.toString("base64"));
+    expect(raw).toContain(order.previewPng!.toString("base64"));
+  });
+
+  it("builds a cancellation email with the reference and preview but no internal note", async () => {
+    const message = orderCancellationMessage({ ...order, customerName: "Alex <Customer>" });
+    expect(message.subject).toContain("cancelled #12345678");
+    expect(message.text).toContain("Order total: €35.00");
+    expect(message.html).toContain("Alex &lt;Customer&gt;");
+    expect(message.html).not.toContain("Alex <Customer>");
+    const transport = nodemailer.createTransport({ streamTransport: true, buffer: true });
+    const info = await transport.sendMail(orderCancellationMail(order, "orders@example.test"));
+    const raw = info.message.toString();
+    expect(raw).toContain("Content-ID: <order-design-preview>");
+    expect(raw).toContain(order.previewPng!.toString("base64"));
   });
 
   it("delivers the email to a configured SMTP server", async () => {
@@ -72,9 +85,11 @@ describe("order confirmation email", () => {
     delete process.env.SMTP_PASSWORD;
     try {
       expect(await sendOrderConfirmation(order)).toBe("sent");
+      expect(await sendOrderCancellation(order)).toBe("sent");
       expect(received).toContain("alex@example.test");
       expect(received).toContain("Content-ID: <order-design-preview>");
       expect(received).toContain("=E2=82=AC35.00");
+      expect(received).toContain("Perty Print order cancelled");
     } finally {
       for (const [key, value] of Object.entries({ SMTP_HOST: previous.host, SMTP_PORT: previous.port, SMTP_FROM: previous.from, SMTP_USER: previous.user, SMTP_PASSWORD: previous.password })) {
         if (value === undefined) delete process.env[key]; else process.env[key] = value;
