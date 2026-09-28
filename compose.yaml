@@ -4,9 +4,9 @@ services:
     environment:
       POSTGRES_DB: perty_print
       POSTGRES_USER: perty
-      POSTGRES_PASSWORD: perty
+      POSTGRES_PASSWORD: "${LOCAL_DB_PASSWORD:?Set LOCAL_DB_PASSWORD in .env}"
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

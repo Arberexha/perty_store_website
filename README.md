@@ -10,8 +10,8 @@ Custom printing shop for Kosovo. The working specification is in [PROJECT_SPEC.m
 ## Local setup
 
 1. Run `npm install`.
-2. In PowerShell, run `Copy-Item .env.example .env`. Edit `.env` and set `DATABASE_URL`, `ADMIN_EMAIL`, and a unique `ADMIN_PASSWORD` of at least 12 characters. The `.env` file is ignored by Git.
-3. Start PostgreSQL. With Docker Desktop running, `docker compose up -d database` starts the included local database on host port 5433; otherwise create the database named in `DATABASE_URL` yourself. The sample `DATABASE_URL` matches the Docker setup.
+2. In PowerShell, run `Copy-Item .env.example .env`. Edit `.env` and set a unique `LOCAL_DB_PASSWORD`, put the same password in `DATABASE_URL`, and set `ADMIN_EMAIL` and a unique `ADMIN_PASSWORD` of at least 12 characters. The `.env` file is ignored by Git.
+3. Start PostgreSQL. With Docker Desktop running, `docker compose up -d database` starts the included local database on `127.0.0.1:5433`; otherwise create the database named in `DATABASE_URL` yourself. The sample `DATABASE_URL` matches the Docker setup after you replace its password in both places.
 4. Run `npm run db:migrate`.
 5. Run `npm run db:seed-admin` once to create the shop owner login. The command does not overwrite an existing account.
 6. Run `npm run dev` and open `http://localhost:3000`.
