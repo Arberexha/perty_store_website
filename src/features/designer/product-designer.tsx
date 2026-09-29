@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent, PointerEvent } from "react";
 import type { OrderOptions } from "@/lib/order-options";
+import type { SavedDesignData } from "@/lib/saved-design";
 import OrderCheckout from "./order-checkout";
 import type { OrderDetails } from "./order-checkout";
 import { removePlainBackground } from "@/lib/remove-plain-background";
@@ -15,7 +16,7 @@ import { canvasPoint, hitLayer, loadImage, loadProductPhoto, render } from "./ca
 
 const legacyProductIds: Record<Product, string> = { pens: "product-pen", shirts: "product-tshirt", hats: "product-hat", lighters: "product-lighter" };
 
-export default function ProductDesigner({ product, catalogProductId, catalogName, catalogAgeRestricted, catalogImageUrl, catalogPrintArea, catalogProducts, orderOptions, minimumQuantity, customer }: { product: Product; catalogProductId: string; catalogName: string; catalogAgeRestricted: boolean; catalogImageUrl: string | null; catalogPrintArea: PrintArea | null; catalogProducts: { id: string; name: string; slug: string; design_template: Product; age_restricted: boolean }[]; orderOptions: OrderOptions | null; minimumQuantity: number; customer: { name: string; email: string } | null }) {
+export default function ProductDesigner({ product, catalogProductId, catalogName, catalogAgeRestricted, catalogImageUrl, catalogPrintArea, catalogProducts, orderOptions, minimumQuantity, customer, savedDesignId }: { product: Product; catalogProductId: string; catalogName: string; catalogAgeRestricted: boolean; catalogImageUrl: string | null; catalogPrintArea: PrintArea | null; catalogProducts: { id: string; name: string; slug: string; design_template: Product; age_restricted: boolean }[]; orderOptions: OrderOptions | null; minimumQuantity: number; customer: { name: string; email: string } | null; savedDesignId: string | null }) {
   const config = products[product];
   const customPhoto = Boolean(catalogImageUrl);
   const customArea = customPhoto ? (catalogPrintArea ?? DEFAULT_PRINT_AREA) : null;
@@ -51,6 +52,11 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   const [layers, setLayers] = useState<Layer[]>(() => product === "shirts" ? [] : initialLayers.map((layer) => ({ ...layer, font: "PertySharpSans", color: "#000000", x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: product === "lighters" ? .52 : product === "hats" ? .75 : product === "pens" ? .65 : 1 })));
   const [selectedId, setSelectedId] = useState<string | null>(product === "shirts" ? null : "starter");
   const [loaded, setLoaded] = useState(false);
+  const [accountDesignId, setAccountDesignId] = useState<string | null>(savedDesignId);
+  const [designName, setDesignName] = useState(`My ${catalogName} design`);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [message, setMessage] = useState(`Move a design directly on the ${config.singular} with your finger or mouse.`);
   const [submitting, setSubmitting] = useState(false);
   const [submittedId, setSubmittedId] = useState<string | null>(null);
@@ -90,10 +96,21 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
 
   useEffect(() => {
     let active = true;
-    queueMicrotask(() => {
+    async function loadDraft() {
       if (!active) return;
       try {
-        const saved = localStorage.getItem(STORAGE_KEY) ?? (catalogProductId === legacyProductIds[product] ? localStorage.getItem(`perty-${product}-design-v1`) : null);
+        let saved: string | null = null;
+        if (savedDesignId) {
+          const response = await fetch(`/api/saved-designs/${encodeURIComponent(savedDesignId)}`, { cache: "no-store" });
+          const result = await response.json() as { id?: string; name?: string; productId?: string; design?: SavedDesignData; error?: string };
+          if (!active) return;
+          if (!response.ok || result.productId !== catalogProductId || !result.design) throw new Error(result.error ?? "This saved design does not belong to this product.");
+          saved = JSON.stringify(result.design);
+          setDesignName(result.name ?? `My ${catalogName} design`);
+          setAccountDesignId(result.id ?? null);
+        } else {
+          saved = localStorage.getItem(STORAGE_KEY) ?? (catalogProductId === legacyProductIds[product] ? localStorage.getItem(`perty-${product}-design-v1`) : null);
+        }
         if (saved) {
           const draft = JSON.parse(saved) as { productColor?: string; pencilColor?: string; layers?: Layer[]; shirtSide?: ShirtSide; personalizations?: Personalization[]; colorVariants?: string[] };
           const savedColor = draft.productColor ?? draft.pencilColor;
@@ -107,11 +124,12 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
             setSelectedId(valid[0]?.id ?? null);
           }
         }
-      } catch { /* A damaged local draft starts fresh. */ }
+      } catch (error) { if (savedDesignId) { setAccountDesignId(null); setMessage(error instanceof Error ? error.message : "Could not open the saved design."); } }
       setLoaded(true);
-    });
+    }
+    void loadDraft();
     return () => { active = false; };
-  }, [STORAGE_KEY, catalogProductId, product, customPhoto]);
+  }, [STORAGE_KEY, catalogProductId, catalogName, product, customPhoto, savedDesignId]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -350,6 +368,25 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     setMessage("Preview downloaded. This is a visual mockup, not a production print file.");
   }
 
+  async function saveToAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!customer || saving || !loaded) return;
+    const previewPng = createPreview();
+    if (!previewPng) { setSaveError("The product photo is still loading. Try again in a moment."); return; }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const response = await fetch("/api/saved-designs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: accountDesignId ?? undefined, productId: catalogProductId, name: designName.trim(), design: { productColor, shirtSide, layers, personalizations, colorVariants }, previewPng }) });
+      const result = await response.json() as { id?: string; error?: string };
+      if (!response.ok || !result.id) throw new Error(result.error ?? "Could not save your design.");
+      setAccountDesignId(result.id);
+      setSaveOpen(false);
+      setMessage(`“${designName.trim()}” is saved to My designs.`);
+      window.history.replaceState(null, "", `${window.location.pathname}?saved=${result.id}`);
+    } catch (error) { setSaveError(error instanceof Error ? error.message : "Could not save your design."); }
+    finally { setSaving(false); }
+  }
+
   function onCanvasPaste(event: ClipboardEvent<HTMLCanvasElement>) {
     const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith("image/"));
     if (!file) return;
@@ -575,7 +612,8 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
               </div>
             </div>
             <div className="studio-view-controls"><label>Zoom <strong>{Math.round(zoom * 100)}%</strong><input type="range" min="0.7" max="1.7" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>{viewMode === "inspect" && <><label>Turn <strong>{Math.round(yaw)}°</strong><input type="range" min="-65" max="65" value={yaw} onChange={(event) => setYaw(Number(event.target.value))} /></label><label>Tilt <strong>{Math.round(pitch)}°</strong><input type="range" min="-40" max="40" value={pitch} onChange={(event) => setPitch(Number(event.target.value))} /></label></>}<button type="button" onClick={() => { setYaw(-22); setPitch(13); setZoom(1); }}>Reset view</button></div>
-            <div className="studio-preview-footer"><span>{product === "shirts" && !customPhoto ? `${shirtSides.find((side) => side.id === shirtSide)?.label} · ${visibleLayers.length} design layers` : viewMode === "edit" ? "Drag artwork to move it. Use the arrow keys for precise placement." : "Drag to turn the product. Switch to Edit design to move artwork."}</span><div className="studio-preview-actions"><button type="button" onClick={sharePreview}>Save / Share</button><button type="button" onClick={downloadPreview}>Download PNG</button>{canRequest && <a href="#send-design">{canOrder ? "Place order →" : "Get a quote →"}</a>}</div></div>
+            <div className="studio-preview-footer"><span>{product === "shirts" && !customPhoto ? `${shirtSides.find((side) => side.id === shirtSide)?.label} · ${visibleLayers.length} design layers` : viewMode === "edit" ? "Drag artwork to move it. Use the arrow keys for precise placement." : "Drag to turn the product. Switch to Edit design to move artwork."}</span><div className="studio-preview-actions">{customer ? <button type="button" disabled={!loaded} onClick={() => { setSaveError(null); setSaveOpen((open) => !open); }}>{accountDesignId ? "Save changes" : "Save design"}</button> : <Link href="/login">Sign in to save</Link>}<button type="button" onClick={sharePreview}>Share preview</button><button type="button" onClick={downloadPreview}>Download PNG</button>{canRequest && <a href="#send-design">{canOrder ? "Place order →" : "Get a quote →"}</a>}</div></div>
+            {saveOpen && customer && <form className="studio-save-panel" onSubmit={saveToAccount}><div><label htmlFor="studio-design-name">Design name</label><input id="studio-design-name" value={designName} maxLength={120} required onChange={(event) => setDesignName(event.target.value)} placeholder="Name your design" /></div><button type="submit" disabled={saving || !loaded}>{saving ? "Saving…" : accountDesignId ? "Save changes" : "Save to My designs"}</button><Link href="/account">My designs →</Link>{saveError && <p role="alert">{saveError}</p>}</form>}
           </section>
           <aside className="studio-shirt-tools" aria-label={`${catalogName} design tools`}>
             <div className="shirt-tools-heading"><span>DESIGN LAB</span><h2>Make it yours.</h2><p>{customPhoto ? "Decorate the marked area on this product photo." : product === "shirts" ? "Design the front, back, and sleeves of your T-shirt." : `Add a name, logo, or artwork to your ${config.singular}.`}</p></div>
@@ -609,7 +647,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
             <button type="submit" disabled={submitting}>{submitting ? "Sending design…" : "Send design request"}</button>
           </form>}
         </section>}
-        <p className="studio-message" role="status">{message}</p><p className="studio-disclaimer">This editor creates a visual preview and saves your draft in this browser. {canOrder ? "Orders are placed without online payment. The shop will contact you about payment and fulfillment." : canRequest ? "Design requests are reviewed by staff before price, production, or delivery is confirmed." : "This 18+ product cannot be ordered online."}</p>
+        <p className="studio-message" role="status">{message}</p><p className="studio-disclaimer">Your draft is kept in this browser. Sign in and save it to My designs to continue on another device. {canOrder ? "Orders are placed without online payment. The shop will contact you about payment and fulfillment." : canRequest ? "Design requests are reviewed by staff before price, production, or delivery is confirmed." : "This 18+ product cannot be ordered online."}</p>
       </div>
     </main>
   );
