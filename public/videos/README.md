@@ -1,0 +1,1 @@
+`screen-printing-hero.mp4` joins the three WhatsApp clips in filename order into one silent, 15-second loop for the homepage hero on every screen size. The original clips are kept here. The still-image fallback is `../images/screen-printing-hero.jpg`.

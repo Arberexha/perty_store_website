@@ -73,11 +73,12 @@ async function audit(actorId: string, action: string, entityType: string, entity
   await getPool().query("INSERT INTO admin_audit_log (id, actor_user_id, action, entity_type, entity_id) VALUES ($1,$2,$3,$4,$5)", [randomUUID(), actorId, action, entityType, entityId]);
 }
 
-async function mutate(path: string, operation: (actorId: string) => Promise<void>, successParam = "saved") {
+async function mutate(path: string, operation: (actorId: string) => Promise<string | void>, successParam = "saved") {
   const actor = await requireAdmin();
   let error: string | null = null;
+  let successPath = path;
   try {
-    await operation(actor.id);
+    successPath = (await operation(actor.id)) || path;
   } catch (cause) {
     error = cause instanceof InputError ? cause.message : "Could not save. Check for duplicate names or values and try again.";
     if (!(cause instanceof InputError)) console.error("Admin mutation failed", cause);
@@ -86,25 +87,29 @@ async function mutate(path: string, operation: (actorId: string) => Promise<void
     revalidatePath("/admin", "layout");
     if (path.startsWith("/admin/products")) revalidatePath("/");
   }
-  redirect(`${path}${path.includes("?") ? "&" : "?"}${error ? `error=${encodeURIComponent(error)}` : `${successParam}=1`}`);
+  const destination = error ? path : successPath;
+  redirect(`${destination}${destination.includes("?") ? "&" : "?"}${error ? `error=${encodeURIComponent(error)}` : `${successParam}=1`}`);
 }
 
 export async function createCategory(form: FormData) {
-  await mutate("/admin/categories", async (actor) => {
+  await mutate("/admin/categories/new", async (actor) => {
     const name = text(form, "name", 80);
     const slug = slugify(name);
     if (!slug) throw new InputError("Enter a valid category name");
+    if ((await getPool().query("SELECT 1 FROM categories WHERE slug=$1", [slug])).rowCount) throw new InputError("A category with this name already exists");
     const id = randomUUID();
     await getPool().query("INSERT INTO categories (id,name,slug,age_restricted) VALUES ($1,$2,$3,$4)", [id, name, slug, form.has("age_restricted")]);
     await audit(actor, "created", "category", id);
+    return "/admin/categories";
   });
 }
 
 export async function createProduct(form: FormData) {
-  await mutate("/admin/products", async (actor) => {
+  await mutate("/admin/products/new", async (actor) => {
     const name = text(form, "name", 120);
     const slug = slugify(name);
     if (!slug) throw new InputError("Enter a valid product name");
+    if ((await getPool().query("SELECT 1 FROM products WHERE slug=$1", [slug])).rowCount) throw new InputError("A product with this name already exists");
     const categoryId = text(form, "category_id", 100);
     const category = await getPool().query<{ age_restricted: boolean }>("SELECT age_restricted FROM categories WHERE id=$1", [categoryId]);
     if (!category.rows[0]) throw new InputError("Choose a category");
@@ -114,6 +119,7 @@ export async function createProduct(form: FormData) {
     const id = randomUUID();
     await getPool().query(`INSERT INTO products (id,category_id,name,slug,description,age_restricted,minimum_quantity,design_template,mockup_image,mockup_mime,print_area) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [id, categoryId, name, slug, optionalText(form, "description"), category.rows[0].age_restricted || template === "lighters", positiveInteger(form, "minimum_quantity"), template, mockup.bytes, mockup.mime, JSON.stringify(mockup.area)]);
     await audit(actor, "created", "product", id);
+    return `/admin/products/${id}`;
   });
 }
 
@@ -208,10 +214,11 @@ export async function deleteTier(form: FormData) {
 }
 
 export async function createQuote(form: FormData) {
-  await mutate("/admin/quotes", async (actor) => {
+  await mutate("/admin/quotes/new", async (actor) => {
     const id = randomUUID();
     await getPool().query("INSERT INTO quotes (id,customer_name,customer_email,details) VALUES ($1,$2,$3,$4)", [id, text(form, "customer_name", 120), text(form, "customer_email", 254), text(form, "details", 5000)]);
     await audit(actor, "created", "quote", id);
+    return "/admin/quotes";
   });
 }
 

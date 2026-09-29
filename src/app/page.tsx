@@ -1,8 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import IdeaTryout from "@/components/idea-tryout";
+import FeaturedProducts from "@/components/featured-products";
+import HeroVideo from "@/components/hero-video";
 import { storefrontProducts } from "@/lib/catalog";
-import { templateVisuals } from "@/lib/catalog-config";
 import type { DesignTemplate } from "@/lib/catalog-config";
 import "./home.css";
 
@@ -17,14 +18,16 @@ const faqs = [
 
 export default async function HomePage() {
   const catalog = await storefrontProducts();
-  const firstProductHref = catalog[0] ? `/design/${catalog[0].slug}` : "#shop-categories";
+  const firstProductHref = catalog[0] ? `/design/${catalog[0].slug}` : "#products";
   const pen = catalog.find((item) => item.design_template === "pens");
   const studios: Partial<Record<DesignTemplate, string>> = {};
   for (const item of catalog) if (!item.image_url) studios[item.design_template] ??= `/design/${item.slug}`;
 
   return (
     <main className="pc-home">
-      <section className="pc-hero pc-wrap" aria-labelledby="pc-hero-title">
+      <section className="pc-hero" aria-labelledby="pc-hero-title">
+        <HeroVideo />
+        <div className="pc-hero-inner pc-wrap">
         <div className="pc-hero-copy">
           <span className="pc-kicker pc-kicker-pill">✳ &nbsp; CUSTOM PRINTING IN KOSOVO</span>
           <h1 id="pc-hero-title">Your design,<br />on <span>everyday things.</span></h1>
@@ -39,13 +42,14 @@ export default async function HomePage() {
           <div className="pc-collage-card pc-collage-hat"><Image src="/images/printed-cap.png" alt="Custom printed baseball cap" fill sizes="(max-width: 800px) 50vw, 18vw" /><span>Custom hats</span></div>
           <div className="pc-collage-sticker">MAKE IT<br /><strong>YOURS</strong><i>✳</i></div>
         </div>
+        </div>
       </section>
 
       <div className="pc-ticker" aria-label="Print shop categories"><div>YOUR DESIGN <span>✳</span> T-SHIRTS <span>✳</span> HATS <span>✳</span> PENS <span>✳</span> MADE IN KOSOVO <span>✳</span> YOUR DESIGN <span>✳</span> T-SHIRTS <span>✳</span> HATS <span>✳</span> PENS <span>✳</span> MADE IN KOSOVO <span>✳</span></div></div>
 
-      <section className="pc-section pc-categories pc-wrap" id="shop-categories"><div className="pc-center-heading"><span className="pc-kicker">EXPLORE THE CATALOG</span><h2>What will you print on?</h2><p>Start with the essentials, then make a design that belongs to you.</p></div><div className="pc-category-grid">{catalog.map((item) => { const visual = templateVisuals[item.design_template]; return <Link href={`/design/${item.slug}`} className={`pc-category-card ${visual.className}`} key={item.id}><Image src={item.image_url ?? visual.image} alt={item.name} unoptimized={Boolean(item.image_url)} fill sizes="(max-width: 600px) 50vw, (max-width: 900px) 45vw, 25vw" /><div className="pc-category-overlay"><span>{item.age_restricted ? "18+ · preview only" : "Design studio open"}</span><h3>{item.name}</h3></div></Link>; })}</div>{!catalog.length && <p className="pc-section-note">No products are published yet. Publish a product in the admin catalog to show it here.</p>}<p className="pc-section-note">Lighter previews are for adults 18+ only. Online lighter ordering is unavailable.</p></section>
+      {catalog.length > 0 ? <FeaturedProducts products={catalog} /> : <section className="pc-section pc-wrap" id="products"><p className="pc-section-note">No products are published yet. Publish a product in the admin catalog to show it here.</p></section>}
 
-      <section className="pc-section pc-examples pc-wrap" id="products" aria-label="Try a design on a product">{Object.keys(studios).length > 0 && <IdeaTryout studios={studios} />}</section>
+      <section className="pc-section pc-examples pc-wrap" id="try-design" aria-label="Try a design on a product">{Object.keys(studios).length > 0 && <IdeaTryout studios={studios} />}</section>
 
       <section className="pc-process" id="how-it-works"><div className="pc-wrap"><div className="pc-center-heading"><span className="pc-kicker">A SIMPLE PROCESS</span><h2>From your idea to a printed piece.</h2><p>Here is how customization will work as the shop opens.</p></div><div className="pc-process-grid"><article><span className="pc-process-icon">▦</span><span className="pc-process-number">01</span><h3>Choose an item</h3><p>Pick a ready-made product and its available color or size.</p></article><article><span className="pc-process-icon">✎</span><span className="pc-process-number">02</span><h3>Add your design</h3><p>Enter text or upload your artwork and place it on the item.</p></article><article><span className="pc-process-icon">◉</span><span className="pc-process-number">03</span><h3>Check the preview</h3><p>Adjust the position, scale, and color until it looks right.</p></article><article><span className="pc-process-icon">✳</span><span className="pc-process-number">04</span><h3>We print it</h3><p>When ordering opens, we will print your approved design.</p></article></div></div></section>
 
