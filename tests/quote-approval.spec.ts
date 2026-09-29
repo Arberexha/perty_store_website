@@ -1,0 +1,100 @@
+import "dotenv/config";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { expect, test } from "@playwright/test";
+import { Pool } from "pg";
+import sharp from "sharp";
+
+test.skip(!process.env.DATABASE_URL, "Requires the local PostgreSQL database");
+
+test("staff revises a design quote and the customer accepts it as an order", async ({ browser, request }) => {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const baseURL = test.info().project.use.baseURL!;
+  const adminId = randomUUID();
+  const customerId = randomUUID();
+  const requestId = randomUUID();
+  const zoneId = randomUUID();
+  const suffix = randomUUID().slice(0, 8);
+  const adminToken = randomBytes(32).toString("base64url");
+  const customerToken = randomBytes(32).toString("base64url");
+  const adminContext = await browser.newContext();
+  const customerContext = await browser.newContext();
+  const preview = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLytQAAAABJRU5ErkJggg==", "base64");
+  const revisedProof = await sharp({ create: { width: 1000, height: 420, channels: 4, background: "#234b37" } }).png().toBuffer();
+  try {
+    await pool.query("INSERT INTO users (id,email,password_hash,name,role) VALUES ($1,$2,'test','Quote admin','admin'),($3,$4,'test','Quote customer','customer')", [adminId, `quote-admin-${suffix}@example.invalid`, customerId, `quote-customer-${suffix}@example.invalid`]);
+    await pool.query("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,now() + interval '20 minutes'),($3,$4,now() + interval '20 minutes')", [createHash("sha256").update(adminToken).digest("hex"), adminId, createHash("sha256").update(customerToken).digest("hex"), customerId]);
+    await pool.query(`INSERT INTO design_requests (id,user_id,product_type,product_id,product_name,customer_name,customer_email,quantity,product_color,design_data,preview_png)
+      VALUES ($1,$2,'hats','product-hat','Custom hat','Quote customer',$3,5,'#244c3d',$4,$5)`, [requestId, customerId, `quote-customer-${suffix}@example.invalid`, JSON.stringify({ layers: [{ id: "text", kind: "text", text: "Hello", color: "#000000", font: "Arial", x: 500, y: 180, scale: 1, rotation: 0 }], personalizations: [], previewHeight: 420, productColors: ["#244c3d"] }), preview]);
+    await pool.query("INSERT INTO shipping_zones (id,name,description,fee_cents) VALUES ($1,$2,'Test delivery',500)", [zoneId, `Quote test zone ${suffix}`]);
+    await adminContext.addCookies([{ name: "perty_session", value: adminToken, url: baseURL }]);
+    await customerContext.addCookies([{ name: "perty_session", value: customerToken, url: baseURL }]);
+    const admin = await adminContext.newPage();
+    const customer = await customerContext.newPage();
+    await admin.goto(`${baseURL}/admin/design-requests/${requestId}`);
+    await admin.getByRole("textbox", { name: "Total quote for all 5 items (€)" }).fill("100.00");
+    await admin.getByRole("textbox", { name: "Offer details for customer" }).fill("Five printed hats in forest green, ready in five days.");
+    await admin.getByRole("button", { name: "Send quote for approval" }).click();
+    await expect(admin.getByText("Revision 1", { exact: false })).toBeVisible();
+    const sentQuote = (await pool.query<{ id: string; amount_cents: number }>("SELECT id,amount_cents FROM quotes WHERE design_request_id=$1", [requestId])).rows[0];
+    const quoteId = sentQuote.id;
+    expect(sentQuote.amount_cents).toBe(10000);
+    expect((await request.get(`/account/quotes/${quoteId}/preview`)).status()).toBe(401);
+    expect((await adminContext.request.get(`${baseURL}/account/quotes/${quoteId}/preview`)).status()).toBe(404);
+
+    await customer.goto(`${baseURL}/account`);
+    await expect(customer.getByRole("heading", { name: "My quotes" })).toBeVisible();
+    await expect(customer.getByLabel("Quote notifications, 1 unread")).toBeVisible();
+    await customer.getByRole("link", { name: "Review quote" }).click();
+    await expect(customer).toHaveURL(new RegExp(`/account/quotes/${quoteId}$`));
+    await expect(customer.getByLabel("Quote notifications")).toBeVisible();
+    await expect(customer.locator(".quote-notifications")).toContainText("No new notifications.");
+    await expect(customer.getByText("€100.00").first()).toBeVisible();
+    const staleQuotePage = await customerContext.newPage();
+    await staleQuotePage.goto(`${baseURL}/account/quotes/${quoteId}`);
+    await customer.getByRole("textbox", { name: "Your feedback" }).fill("Please use a darker print and revise the price.");
+    await customer.getByRole("button", { name: "Request changes" }).click();
+    await expect(customer.getByRole("heading", { name: "Changes requested" })).toBeVisible();
+    expect((await pool.query("SELECT id FROM orders WHERE user_id=$1", [customerId])).rowCount).toBe(0);
+    await admin.reload();
+    await expect(admin.getByText("Please use a darker print and revise the price.")).toBeVisible();
+    await admin.getByRole("textbox", { name: "Total quote for all 5 items (€)" }).fill("90.00");
+    await admin.getByRole("textbox", { name: "Offer details for customer" }).fill("Five printed hats with darker artwork, ready in five days.");
+    await admin.getByLabel("Final preview PNG (optional)").setInputFiles({ name: "revised-proof.png", mimeType: "image/png", buffer: revisedProof });
+    await admin.getByRole("button", { name: "Send revised quote" }).click();
+    await expect(admin.getByText("Revision 2", { exact: false })).toBeVisible();
+    await customer.goto(`${baseURL}/account`);
+    await customer.getByLabel("Quote notifications, 1 unread").click();
+    await customer.getByRole("button", { name: /Your quote was updated/ }).click();
+    await expect(customer.getByLabel("Quote notifications")).toBeVisible();
+    await staleQuotePage.getByRole("button", { name: "Accept quote and place order" }).click();
+    await expect(staleQuotePage.locator(".quote-feedback.error")).toContainText("quote changed");
+    expect((await pool.query("SELECT id FROM orders WHERE user_id=$1", [customerId])).rowCount).toBe(0);
+    await staleQuotePage.close();
+    await expect(customer.getByRole("heading", { name: "Final proof" })).toBeVisible();
+    expect(Buffer.from(await (await customerContext.request.get(`${baseURL}/account/quotes/${quoteId}/preview`)).body()).equals(revisedProof)).toBe(true);
+    await expect(customer.getByText("€90.00").first()).toBeVisible();
+    await customer.getByRole("radio", { name: "Delivery" }).check();
+    await customer.getByRole("combobox", { name: "Delivery zone" }).selectOption(zoneId);
+    await customer.getByRole("textbox", { name: "Delivery address" }).fill("123 Test Street, Pristina");
+    await expect(customer.getByText("€95.00")).toBeVisible();
+    await customer.getByRole("button", { name: "Accept quote and place order" }).click();
+    await expect(customer.getByRole("heading", { name: "Quote accepted" })).toBeVisible();
+    const orders = await pool.query<{ id: string; subtotal_cents: number; shipping_cents: number; total_cents: number; quantity: number; preview_size: number; design_data: { quoteProof: boolean; quoteRevision: number } }>(`SELECT o.id,o.subtotal_cents,o.shipping_cents,o.total_cents,i.quantity,i.design_data,octet_length(i.preview_png) AS preview_size
+      FROM quotes q JOIN orders o ON o.id=q.order_id JOIN order_items i ON i.order_id=o.id WHERE q.id=$1`, [quoteId]);
+    expect(orders.rows).toHaveLength(1);
+    expect(orders.rows[0]).toMatchObject({ subtotal_cents: 9000, shipping_cents: 500, total_cents: 9500, quantity: 5 });
+    expect(orders.rows[0].preview_size).toBe(revisedProof.length);
+    expect(orders.rows[0].design_data).toMatchObject({ quoteProof: true, quoteRevision: 2 });
+    await admin.goto(`${baseURL}/admin/orders/${orders.rows[0].id}`);
+    await expect(admin.getByText("Approved quote proof, revision 2", { exact: false })).toBeVisible();
+  } finally {
+    await adminContext.close();
+    await customerContext.close();
+    await pool.query("DELETE FROM quotes WHERE design_request_id=$1", [requestId]);
+    await pool.query("DELETE FROM orders WHERE user_id=$1", [customerId]);
+    await pool.query("DELETE FROM design_requests WHERE id=$1", [requestId]);
+    await pool.query("DELETE FROM shipping_zones WHERE id=$1", [zoneId]);
+    await pool.query("DELETE FROM users WHERE id IN ($1,$2)", [adminId, customerId]);
+    await pool.end();
+  }
+});

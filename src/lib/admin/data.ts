@@ -6,11 +6,11 @@ export type Product = { id: string; category_id: string; category_name: string; 
 export type Variant = { id: string; product_id: string; sku: string; label: string; size: string; material: string; color: string; base_price_cents: number | null; active: boolean };
 export type Tier = { id: string; variant_id: string; minimum_quantity: number; unit_price_cents: number };
 export type Order = { id: string; customer_name: string; customer_email: string; status: string; fulfillment_method: string; total_cents: number; created_at: Date; admin_note: string; item_count: number; payment_status: string | null; confirmation_email_status: string; cancellation_email_status: string };
-export type Quote = { id: string; customer_name: string; customer_email: string; details: string; status: string; amount_cents: number | null; admin_note: string; created_at: Date };
+export type Quote = { id: string; customer_name: string; customer_email: string; details: string; status: string; amount_cents: number | null; admin_note: string; created_at: Date; design_request_id: string | null; customer_note: string; revision: number; notification_email_status: string; order_id: string | null };
 export type Artwork = { id: string; original_name: string; mime_type: string; size_bytes: number; status: string; created_at: Date; customer_email: string | null };
 export type Pickup = { id: string; name: string; address: string; opening_hours: string; active: boolean };
 export type Shipping = { id: string; name: string; description: string; fee_cents: number; active: boolean };
-export type DesignRequest = { id: string; product_type: "pens" | "shirts" | "hats"; product_id: string | null; product_name: string | null; customer_name: string; customer_email: string; customer_phone: string; quantity: number; notes: string; product_color: string; design_data: { layers?: Array<{ kind: string; text?: string; side?: string }>; personalizations?: Array<{ name: string; number: string; size: string }>; previewSide?: string; previewHeight?: number; productColors?: string[]; photoMockup?: boolean }; status: string; admin_note: string; created_at: Date; updated_at: Date };
+export type DesignRequest = { id: string; user_id: string | null; product_type: "pens" | "shirts" | "hats"; product_id: string | null; product_name: string | null; customer_name: string; customer_email: string; customer_phone: string; quantity: number; notes: string; product_color: string; design_data: { layers?: Array<{ kind: string; text?: string; side?: string }>; personalizations?: Array<{ name: string; number: string; size: string }>; previewSide?: string; previewHeight?: number; productColors?: string[]; photoMockup?: boolean }; status: string; admin_note: string; created_at: Date; updated_at: Date };
 
 export async function categories(): Promise<Category[]> {
   const result = await getPool().query<Category>(`SELECT c.*, count(p.id)::int AS product_count,
@@ -43,11 +43,11 @@ export async function orders(): Promise<Order[]> {
 }
 
 export async function designRequests(): Promise<DesignRequest[]> {
-  return (await getPool().query<DesignRequest>(`SELECT id,product_type,product_id,product_name,customer_name,customer_email,customer_phone,quantity,notes,product_color,design_data,status,admin_note,created_at,updated_at FROM design_requests ORDER BY created_at DESC LIMIT 100`)).rows;
+  return (await getPool().query<DesignRequest>(`SELECT id,user_id,product_type,product_id,product_name,customer_name,customer_email,customer_phone,quantity,notes,product_color,design_data,status,admin_note,created_at,updated_at FROM design_requests ORDER BY created_at DESC LIMIT 100`)).rows;
 }
 
 export async function designRequest(id: string): Promise<DesignRequest | null> {
-  const result = await getPool().query<DesignRequest>(`SELECT id,product_type,product_id,product_name,customer_name,customer_email,customer_phone,quantity,notes,product_color,design_data,status,admin_note,created_at,updated_at FROM design_requests WHERE id=$1`, [id]);
+  const result = await getPool().query<DesignRequest>(`SELECT id,user_id,product_type,product_id,product_name,customer_name,customer_email,customer_phone,quantity,notes,product_color,design_data,status,admin_note,created_at,updated_at FROM design_requests WHERE id=$1`, [id]);
   return result.rows[0] ?? null;
 }
 

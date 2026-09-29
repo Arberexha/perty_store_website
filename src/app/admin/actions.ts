@@ -227,8 +227,8 @@ export async function updateQuote(form: FormData) {
     const id = text(form, "id", 100);
     const status = text(form, "status", 20);
     if (!["new", "reviewing", "sent", "accepted", "declined"].includes(status)) throw new InputError("Choose a valid quote status");
-    const result = await getPool().query("UPDATE quotes SET status=$2,amount_cents=$3,admin_note=$4,updated_at=now() WHERE id=$1", [id, status, euroAmount(form, "amount", true), optionalText(form, "admin_note")]);
-    if (!result.rowCount) throw new InputError("Quote not found");
+    const result = await getPool().query("UPDATE quotes SET status=$2,amount_cents=$3,admin_note=$4,updated_at=now() WHERE id=$1 AND design_request_id IS NULL", [id, status, euroAmount(form, "amount", true), optionalText(form, "admin_note")]);
+    if (!result.rowCount) throw new InputError("Manual quote not found");
     await audit(actor, "updated", "quote", id);
   });
 }
@@ -279,6 +279,9 @@ export async function updateDesignRequest(form: FormData) {
   await mutate(`/admin/design-requests/${id}`, async (actor) => {
     const status = text(form, "status", 20);
     if (!["new", "reviewing", "quoted", "closed", "cancelled"].includes(status)) throw new InputError("Choose a valid request status");
+    const linked = await getPool().query<{ status: string }>("SELECT status FROM quotes WHERE design_request_id=$1", [id]);
+    const requiredStatus = linked.rows[0]?.status === "sent" ? "quoted" : linked.rows[0]?.status === "changes_requested" ? "reviewing" : linked.rows[0]?.status === "accepted" ? "closed" : null;
+    if (requiredStatus && status !== requiredStatus) throw new InputError("This request status is managed by its quote");
     const result = await getPool().query("UPDATE design_requests SET status=$2,admin_note=$3,updated_at=now() WHERE id=$1", [id, status, optionalText(form, "admin_note")]);
     if (!result.rowCount) throw new InputError("Design request not found");
     await audit(actor, "updated", "design_request", id);

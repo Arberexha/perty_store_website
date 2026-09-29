@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import MotionEffects from "@/components/motion-effects";
+import { QuoteNotificationRefresh } from "@/components/quote-notification-refresh";
+import { QuoteNotifications, type QuoteNotification } from "@/components/quote-notifications";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getPool } from "@/lib/db";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,6 +14,12 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentUser();
+  const unread = user ? await getPool().query<QuoteNotification & { unread_count: number }>(
+    `SELECT q.id,q.revision,coalesce(r.product_name,r.product_type) AS product_name,count(*) OVER ()::int AS unread_count
+     FROM quotes q JOIN design_requests r ON r.id=q.design_request_id
+     WHERE q.user_id=$1 AND r.user_id=$1 AND q.status='sent' AND q.revision>q.customer_seen_revision
+     ORDER BY q.sent_at DESC NULLS LAST LIMIT 5`, [user.id],
+  ) : null;
   return (
     <html lang="en">
       <body>
@@ -25,6 +34,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <Link href="/#faq">FAQs</Link>
           </nav>
           <div className="header-actions">
+            {user && <><QuoteNotificationRefresh /><QuoteNotifications notifications={unread?.rows ?? []} count={unread?.rows[0]?.unread_count ?? 0} /></>}
             {user ? <Link className="account-link" href="/account">My account</Link> : <Link className="account-link" href="/login">Sign in</Link>}
             <Link className="header-design-link" href="/#shop-categories">Start designing <span aria-hidden="true">↗</span></Link>
           </div>
