@@ -2,7 +2,7 @@ import { z } from "zod";
 import { decodeDesignImage } from "@/lib/design-request";
 
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
-const side = z.enum(["front", "left-chest", "back", "left-sleeve", "right-sleeve"]);
+const side = z.enum(["front", "back"]);
 const base = { id: z.string().min(1).max(100), x: z.number().finite().min(0).max(1000), y: z.number().finite().min(0).max(420), scale: z.number().finite().min(.1).max(4), rotation: z.number().finite().min(-360).max(360), side: side.optional() };
 const textLayer = z.object({ ...base, kind: z.literal("text"), text: z.string().max(32), color, font: z.enum(["Arial", "Georgia", "PertySharpSans"]), outlineColor: color.optional(), outlineWidth: z.number().finite().min(0).max(8).optional(), curve: z.number().finite().min(-100).max(100).optional() }).strict();
 const imageLayer = z.object({ ...base, kind: z.literal("image"), src: z.string().max(1_500_000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/), aspect: z.number().finite().positive().max(100) }).strict();

@@ -1,7 +1,7 @@
 export const WIDTH = 1000;
 export const HEIGHT = 420;
 export type Product = "pens" | "shirts" | "hats" | "lighters";
-export type ShirtSide = "front" | "left-chest" | "back" | "left-sleeve" | "right-sleeve";
+export type ShirtSide = "front" | "back";
 export type ShirtTool = "product" | "text" | "upload" | "art" | "personalize" | "layers";
 export type Personalization = { name: string; number: string; size: string };
 export const photoSources: Record<Product, string> = {
@@ -37,8 +37,7 @@ export type DragState = { id: string; dx: number; dy: number };
 export type DraftSnapshot = { layers: Layer[]; color: string; selectedId: string | null; side: ShirtSide; personalizations: Personalization[]; colorVariants: string[] };
 
 export const shirtSides: { id: ShirtSide; label: string }[] = [
-  { id: "front", label: "Front" }, { id: "left-chest", label: "Left chest" }, { id: "back", label: "Back" },
-  { id: "left-sleeve", label: "Left sleeve" }, { id: "right-sleeve", label: "Right sleeve" },
+  { id: "front", label: "Front" }, { id: "back", label: "Back" },
 ];
 export const artIcons = [
   { id: "star", name: "Star", path: "M50 5 61 37 95 38 68 58 78 91 50 72 22 91 32 58 5 38 39 37Z" },
@@ -51,10 +50,7 @@ export const artIcons = [
 
 export function printArea(product: Product, side: ShirtSide) {
   if (product !== "shirts") return products[product].print;
-  if (side === "left-chest") return { left: 538, top: 122, right: 618, bottom: 204 };
   if (side === "back") return { left: 390, top: 95, right: 610, bottom: 325 };
-  if (side === "left-sleeve") return { left: 267, top: 118, right: 340, bottom: 206 };
-  if (side === "right-sleeve") return { left: 658, top: 118, right: 731, bottom: 206 };
   return products.shirts.print;
 }
 export type ViewDrag = { x: number; y: number; yaw: number; pitch: number };

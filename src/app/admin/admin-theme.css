@@ -98,6 +98,12 @@ body:has(.admin-shell) { background: #f4f6f2; }
 .admin-table th { background: #f7f9f6; color: #67796a; border-color: var(--admin-line); padding: 13px 19px; font-size: 10px; }
 .admin-table td { padding: 16px 19px; color: #56665a; border-color: #edf1eb; line-height: 1.45; }
 .admin-table tbody tr:hover { background: #fafcf9; }
+.design-requests-table tbody tr.is-unread { background: #eaf6ef; }
+.design-requests-table tbody tr.is-unread:hover { background: #dff0e6; }
+.design-requests-table tbody tr.is-unread td:first-child { box-shadow: inset 4px 0 #176847; }
+.design-request-unread { display: inline-block; margin-left: 10px; padding: 2px 7px; border-radius: 999px; background: #176847; color: #fff; font-size: 10px; font-weight: 700; }
+.design-request-open-form { display: inline; }
+.design-request-open-form .table-link { cursor: pointer; font-family: inherit; }
 .admin-table td strong { color: #2a3b2f; font-size: 13px; }
 .admin-table td small { color: #819084; font-size: 11px; }
 .table-link { color: var(--admin-blue); font-size: 12px; }

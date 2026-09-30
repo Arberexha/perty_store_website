@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { openDesignRequest } from "./design-requests/actions";
 import { dashboard } from "@/lib/admin/data";
 import { dateTime, euro } from "@/lib/admin/format";
 import { AdminChart } from "@/components/admin-chart";
@@ -60,9 +61,9 @@ export default async function AdminPage() {
         })}</div>
       </section>
       <section className="admin-panel"><div className="panel-title"><div><h2>Recently submitted designs</h2><p>Customer artwork requests.</p></div><Link href="/admin/design-requests">View all ↗</Link></div>
-        {recentDesigns.length ? <div className="admin-recent-list">{recentDesigns.map((request) => <Link href={`/admin/design-requests/${request.id}`} key={request.id}>
+        {recentDesigns.length ? <div className="admin-recent-list">{recentDesigns.map((request) => <form action={openDesignRequest} key={request.id}><input type="hidden" name="id" value={request.id} /><button type="submit">
           <span><strong>{request.customer_name}</strong><small>{request.product_name ?? request.product_type} · {dateTime(request.created_at)}</small></span><span className="status-pill">{request.status}</span>
-        </Link>)}</div> : <div className="admin-empty">No design requests yet.</div>}
+        </button></form>)}</div> : <div className="admin-empty">No design requests yet.</div>}
       </section>
     </div>
 

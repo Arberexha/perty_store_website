@@ -24,5 +24,8 @@ describe("design request validation", () => {
     const shirtRequest = { ...request, previewSide: "overview", previewHeight: 420, productColors: ["#f4f1e9", "#292b29"], personalizations: [{ name: "Avery", number: "12", size: "M" }], layers: [{ ...request.layers[0], side: "back", font: "PertySharpSans", outlineColor: "#ffffff", outlineWidth: 2, curve: 30 }] };
     expect(designRequestSchema.safeParse(shirtRequest).success).toBe(true);
     expect(designRequestSchema.safeParse({ ...shirtRequest, previewSide: "collar" }).success).toBe(false);
+    expect(designRequestSchema.safeParse({ ...shirtRequest, previewSide: "left-chest" }).success).toBe(false);
+    expect(designRequestSchema.safeParse({ ...shirtRequest, layers: [{ ...shirtRequest.layers[0], side: "left-sleeve" }] }).success).toBe(false);
+    expect(designRequestSchema.safeParse({ ...shirtRequest, layers: [{ ...shirtRequest.layers[0], side: "right-sleeve" }] }).success).toBe(false);
   });
 });

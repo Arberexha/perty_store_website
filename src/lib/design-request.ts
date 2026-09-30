@@ -7,7 +7,7 @@ const layerBase = {
   y: z.number().finite().min(0).max(420),
   scale: z.number().finite().min(0.4).max(2),
   rotation: z.number().finite().min(-60).max(60),
-  side: z.enum(["front", "left-chest", "back", "left-sleeve", "right-sleeve"]).optional(),
+  side: z.enum(["front", "back"]).optional(),
 };
 const textLayer = z.object({ ...layerBase, kind: z.literal("text"), text: z.string().trim().min(1).max(32), color: hexColor, font: z.enum(["Arial", "Georgia", "PertySharpSans"]), outlineColor: hexColor.optional(), outlineWidth: z.number().finite().min(0).max(8).optional(), curve: z.number().finite().min(-100).max(100).optional() }).strict();
 const imageLayer = z.object({ ...layerBase, kind: z.literal("image"), src: z.string().max(1_500_000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/), aspect: z.number().finite().positive().max(100) }).strict();
@@ -23,7 +23,7 @@ export const designRequestSchema = z.object({
   productColor: hexColor,
   layers: z.array(z.discriminatedUnion("kind", [textLayer, imageLayer])).min(1).max(20),
   personalizations: z.array(z.object({ name: z.string().trim().max(40), number: z.string().trim().max(8), size: z.string().trim().max(12) }).strict()).max(100).optional(),
-  previewSide: z.enum(["front", "left-chest", "back", "left-sleeve", "right-sleeve", "overview"]).optional(),
+  previewSide: z.enum(["front", "back", "overview"]).optional(),
   previewHeight: z.number().int().min(210).max(630).optional(),
   productColors: z.array(hexColor).min(1).max(13).optional(),
   previewPng: z.string().max(3_000_000).regex(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/),

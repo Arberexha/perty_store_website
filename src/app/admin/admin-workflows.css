@@ -24,8 +24,9 @@
 .admin-pipeline-track { height: 8px; overflow: hidden; background: #eaf0e9; border-radius: 100px; }
 .admin-pipeline-track span { display: block; height: 100%; border-radius: inherit; background: #4c9a69; }
 .admin-pipeline-row:last-child .admin-pipeline-track span { background: #b7c2b8; }
-.admin-recent-list > a { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid var(--admin-line); }
-.admin-recent-list > a:hover strong { color: var(--admin-blue); }
+.admin-recent-list > a, .admin-recent-list > form > button { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid var(--admin-line); }
+.admin-recent-list > form > button { width: 100%; border-right: 0; border-bottom: 0; border-left: 0; background: none; text-align: left; font: inherit; cursor: pointer; }
+.admin-recent-list > a:hover strong, .admin-recent-list > form > button:hover strong { color: var(--admin-blue); }
 .admin-recent-list strong, .admin-recent-list small { display: block; }
 .admin-recent-list strong { color: var(--admin-ink); font-size: 12px; }
 .admin-recent-list small { margin-top: 4px; color: #7a897d; font-size: 11px; }

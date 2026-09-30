@@ -119,7 +119,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
           if (product === "shirts" && !customPhoto && Array.isArray(draft.personalizations)) setPersonalizations(draft.personalizations.filter((entry) => entry && typeof entry.name === "string" && typeof entry.number === "string" && typeof entry.size === "string").slice(0, 100));
           if (product !== "lighters" && Array.isArray(draft.colorVariants)) setColorVariants(draft.colorVariants.filter((color) => typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color)).slice(0, 12));
           if (Array.isArray(draft.layers)) {
-            const valid = draft.layers.filter((layer) => layer && typeof layer.id === "string" && Number.isFinite(layer.x) && Number.isFinite(layer.y) && (layer.kind === "text" || layer.kind === "image") && (!customPhoto || (layer.side ?? "front") === "front"));
+            const valid = draft.layers.filter((layer) => layer && typeof layer.id === "string" && Number.isFinite(layer.x) && Number.isFinite(layer.y) && (layer.kind === "text" || layer.kind === "image") && (layer.side === undefined || shirtSides.some((side) => side.id === layer.side)) && (!customPhoto || (layer.side ?? "front") === "front"));
             setLayers(valid);
             setSelectedId(valid[0]?.id ?? null);
           }
@@ -179,7 +179,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     rememberChange();
     setViewMode("edit");
     const id = crypto.randomUUID();
-    setLayers((current) => [...current, { id, kind: "text", text: "YOUR TEXT", color: "#000000", font: "PertySharpSans", x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 210)) : product === "lighters" ? .52 : product === "hats" ? .75 : product === "pens" ? .65 : product === "shirts" && shirtSide !== "front" && shirtSide !== "back" ? .55 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
+    setLayers((current) => [...current, { id, kind: "text", text: "YOUR TEXT", color: "#000000", font: "PertySharpSans", x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 210)) : product === "lighters" ? .52 : product === "hats" ? .75 : product === "pens" ? .65 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
     setSelectedId(id);
   }
 
@@ -205,7 +205,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
       context.drawImage(image, 0, 0, 512, 512);
       rememberChange();
       const id = crypto.randomUUID();
-      setLayers((current) => [...current, { id, kind: "image", src: canvas.toDataURL("image/png"), aspect: 1, x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 150)) : product === "pens" ? .26 : product === "lighters" ? .8 : product === "shirts" && shirtSide !== "front" && shirtSide !== "back" ? .55 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
+      setLayers((current) => [...current, { id, kind: "image", src: canvas.toDataURL("image/png"), aspect: 1, x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 150)) : product === "pens" ? .26 : product === "lighters" ? .8 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
       setSelectedId(id);
       setViewMode("edit");
       setMessage(`${icon.name} added to the ${product === "shirts" ? shirtSides.find((item) => item.id === shirtSide)?.label.toLowerCase() : config.singular}.`);
@@ -280,7 +280,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
         rememberChange();
         setViewMode("edit");
         const id = crypto.randomUUID();
-        setLayers((current) => [...current, { id, kind: "image", src: source, aspect: image.width / image.height, x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 150)) : product === "pens" ? .3 : product === "lighters" ? .85 : product === "shirts" && shirtSide !== "front" && shirtSide !== "back" ? .55 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
+        setLayers((current) => [...current, { id, kind: "image", src: source, aspect: image.width / image.height, x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 150)) : product === "pens" ? .3 : product === "lighters" ? .85 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
         setSelectedId(id);
         setMessage(`${backgroundRemoved ? "Plain background removed. " : "Image added. "}Drag it on the ${config.singular} to place it.`);
       };
@@ -616,7 +616,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
             {saveOpen && customer && <form className="studio-save-panel" onSubmit={saveToAccount}><div><label htmlFor="studio-design-name">Design name</label><input id="studio-design-name" value={designName} maxLength={120} required onChange={(event) => setDesignName(event.target.value)} placeholder="Name your design" /></div><button type="submit" disabled={saving || !loaded}>{saving ? "Saving…" : accountDesignId ? "Save changes" : "Save to My designs"}</button><Link href="/account">My designs →</Link>{saveError && <p role="alert">{saveError}</p>}</form>}
           </section>
           <aside className="studio-shirt-tools" aria-label={`${catalogName} design tools`}>
-            <div className="shirt-tools-heading"><span>DESIGN LAB</span><h2>Make it yours.</h2><p>{customPhoto ? "Decorate the marked area on this product photo." : product === "shirts" ? "Design the front, back, and sleeves of your T-shirt." : `Add a name, logo, or artwork to your ${config.singular}.`}</p></div>
+            <div className="shirt-tools-heading"><span>DESIGN LAB</span><h2>Make it yours.</h2><p>{customPhoto ? "Decorate the marked area on this product photo." : product === "shirts" ? "Design the front and back of your T-shirt." : `Add a name, logo, or artwork to your ${config.singular}.`}</p></div>
             <div className="shirt-tool-tabs" role="group" aria-label="Design tools">
               {([
                 ...(!customPhoto ? [["product", "◉", "Product color"]] as const : []), ["text", "T", "Add text"], ["upload", "↑", "Upload"],

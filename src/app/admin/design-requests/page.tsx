@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { designRequests } from "@/lib/admin/data";
 import { dateTime } from "@/lib/admin/format";
+import { openDesignRequest } from "./actions";
 
 const productNames = { pens: "Pens", shirts: "T-shirts", hats: "Hats" };
 const statuses = ["all", "new", "reviewing", "quoted", "closed", "cancelled"] as const;
@@ -18,8 +19,8 @@ export default async function DesignRequestsPage({ searchParams }: { searchParam
     <div className="admin-summary-strip"><div><strong>{items.length}</strong><span>Recent requests</span></div><div><strong>{newCount}</strong><span>New</span></div><div><strong>{reviewing}</strong><span>Under review</span></div><div><strong>{quoted}</strong><span>Quoted</span></div></div>
     <section className="admin-panel table-panel"><div className="panel-title"><div><h2>Submitted designs</h2><p>Open a request to view its preview and customer details.</p></div><span>{filtered.length} SHOWN</span></div>
       <nav className="admin-filter-chips" aria-label="Filter design requests">{statuses.map((option) => <Link key={option} className={status === option ? "is-active" : ""} href={option === "all" ? "/admin/design-requests" : `/admin/design-requests?status=${option}`}>{option === "all" ? "All" : option}</Link>)}</nav>
-      {filtered.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Request</th><th>Customer</th><th>Product</th><th>Quantity</th><th>Status</th><th>Design</th></tr></thead><tbody>{filtered.map((item) => <tr key={item.id}>
-        <td><Link className="table-link mono" href={`/admin/design-requests/${item.id}`}>#{item.id.slice(0, 8)}</Link><small>{dateTime(item.created_at)}</small></td><td><strong>{item.customer_name}</strong><small>{item.customer_email}</small></td><td>{item.product_name ?? productNames[item.product_type]}</td><td>{item.quantity}</td><td><span className={item.status === "closed" ? "status-pill positive" : "status-pill"}>{item.status}</span></td><td><Link className="table-link" href={`/admin/design-requests/${item.id}`}>Review design ↗</Link></td>
+      {filtered.length ? <div className="admin-table-wrap"><table className="admin-table design-requests-table"><thead><tr><th>Request</th><th>Customer</th><th>Product</th><th>Quantity</th><th>Status</th><th>Design</th></tr></thead><tbody>{filtered.map((item) => <tr key={item.id} className={item.admin_viewed_at ? undefined : "is-unread"}>
+        <td><form action={openDesignRequest} className="design-request-open-form"><input type="hidden" name="id" value={item.id} /><button className="table-link mono" type="submit">#{item.id.slice(0, 8)}</button></form>{!item.admin_viewed_at && <span className="design-request-unread">Unread</span>}<small>{dateTime(item.created_at)}</small></td><td><strong>{item.customer_name}</strong><small>{item.customer_email}</small></td><td>{item.product_name ?? productNames[item.product_type]}</td><td>{item.quantity}</td><td><span className={item.status === "closed" ? "status-pill positive" : "status-pill"}>{item.status}</span></td><td><form action={openDesignRequest} className="design-request-open-form"><input type="hidden" name="id" value={item.id} /><button className="table-link" type="submit">Review design ↗</button></form></td>
       </tr>)}</tbody></table></div> : <div className="admin-empty">{items.length ? "No requests match this status." : "No designs submitted yet."}</div>}
     </section>
   </main>;
