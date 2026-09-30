@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { openDesignRequest } from "./design-requests/actions";
+import { openOrder } from "./orders/actions";
 import { dashboard } from "@/lib/admin/data";
 import { dateTime, euro } from "@/lib/admin/format";
 import { AdminChart } from "@/components/admin-chart";
@@ -68,8 +69,8 @@ export default async function AdminPage() {
     </div>
 
     <section className="admin-panel table-panel"><div className="panel-title"><div><h2>Recent orders</h2><p>Latest customer purchases and payment status.</p></div><Link href="/admin/orders">View all ↗</Link></div>
-      {recent.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Date</th></tr></thead><tbody>{recent.map((order) => <tr key={order.id}>
-        <td><Link className="table-link mono" href={`/admin/orders/${order.id}`}>#{order.id.slice(0, 8)}</Link></td><td><strong>{order.customer_name}</strong><small>{order.customer_email}</small></td><td>{order.item_count}</td><td>{euro(order.total_cents)}</td><td><span className="status-pill">{order.payment_status ?? "unpaid"}</span></td><td><span className="status-pill">{order.status.replaceAll("_", " ")}</span></td><td>{dateTime(order.created_at)}</td>
+      {recent.length ? <div className="admin-table-wrap"><table className="admin-table orders-table"><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Date</th></tr></thead><tbody>{recent.map((order) => <tr key={order.id} className={order.admin_viewed_at ? undefined : "is-unread"}>
+        <td><form action={openOrder} className="order-open-form"><input type="hidden" name="id" value={order.id} /><button className="table-link mono" type="submit">#{order.id.slice(0, 8)}</button></form>{!order.admin_viewed_at && <span className="order-unread">Unread</span>}</td><td><strong>{order.customer_name}</strong><small>{order.customer_email}</small></td><td>{order.item_count}</td><td>{euro(order.total_cents)}</td><td><span className="status-pill">{order.payment_status ?? "unpaid"}</span></td><td><span className="status-pill">{order.status.replaceAll("_", " ")}</span></td><td>{dateTime(order.created_at)}</td>
       </tr>)}</tbody></table></div> : <div className="admin-empty">No orders yet. Orders will appear here when customers start checking out.</div>}
     </section>
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/guard";
 import { AdminNav } from "@/components/admin-nav";
 import { SignOutButton } from "@/components/sign-out-button";
+import { AdminOrderSound } from "@/components/admin-order-sound";
 import "./admin.css";
 import "./admin-theme.css";
 import "./admin-workflows.css";
@@ -18,7 +19,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </div>
     </aside>
     <div className="admin-main">
-      <div className="admin-topbar"><div className="admin-topbar-title"><span className="live-dot" /><span>Perty Print</span><b>/</b><strong>Administration</strong></div><div className="admin-topbar-actions"><Link href="/" className="admin-topbar-storefront">View store ↗</Link><SignOutButton /></div></div>
+      <div className="admin-topbar"><div className="admin-topbar-title"><span className="live-dot" /><span>Perty Print</span><b>/</b><strong>Administration</strong></div><div className="admin-topbar-actions"><AdminOrderSound /><Link href="/" className="admin-topbar-storefront">View store ↗</Link><SignOutButton /></div></div>
       {children}
     </div>
   </div>;
