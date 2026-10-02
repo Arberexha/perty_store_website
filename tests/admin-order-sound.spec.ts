@@ -20,17 +20,28 @@ test("an enabled admin panel sounds for a newly placed order", async ({ browser,
     await pool.query("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,now() + interval '20 minutes')", [createHash("sha256").update(token).digest("hex"), adminId]);
     await context.addCookies([{ name: "perty_session", value: token, url: baseURL }]);
     const page = await context.newPage();
-    await page.goto(`${baseURL}/admin`);
-    await page.getByRole("button", { name: "Enable sound" }).click();
-    await expect(page.getByRole("button", { name: "Sound on" })).toBeVisible();
+    await page.addInitScript(() => {
+      const original = AudioContext.prototype.createOscillator;
+      AudioContext.prototype.createOscillator = function (...args) {
+        (window as Window & { soundOscillators?: number }).soundOscillators = ((window as Window & { soundOscillators?: number }).soundOscillators ?? 0) + 1;
+        return original.apply(this, args);
+      };
+    });
+    await page.goto(`${baseURL}/admin/settings`);
+    const soundSwitch = page.getByRole("switch", { name: "New order sound" });
+    await expect(soundSwitch).toHaveAttribute("aria-checked", "false");
+    await soundSwitch.click();
+    await expect(soundSwitch).toHaveAttribute("aria-checked", "true");
     await page.getByRole("navigation", { name: "Admin navigation" }).getByRole("link", { name: "Orders" }).click();
-    await expect(page.getByRole("button", { name: "Sound on" })).toBeVisible();
 
     await pool.query("INSERT INTO orders (id,customer_name,customer_email,fulfillment_method,subtotal_cents,total_cents) VALUES ($1,'Sound test customer',$2,'pickup',1000,1000)", [orderId, `sound-order-${orderId}@example.invalid`]);
-    await expect(page.getByRole("button", { name: "New order!" })).toBeVisible({ timeout: 16_000 });
-    await expect(page.getByRole("button", { name: "Sound on" })).toBeVisible({ timeout: 7_000 });
-    await page.getByRole("button", { name: "Sound on" }).click();
-    await expect(page.getByRole("button", { name: "Enable sound" })).toBeVisible();
+    await page.waitForFunction(() => (window as Window & { soundOscillators?: number }).soundOscillators === 5, undefined, { timeout: 16_000 });
+    await page.getByRole("navigation", { name: "Admin navigation" }).getByRole("link", { name: "Settings" }).click();
+    await expect(soundSwitch).toHaveAttribute("aria-checked", "true");
+    await page.reload();
+    await expect(soundSwitch).toHaveAttribute("aria-checked", "true");
+    await soundSwitch.click();
+    await expect(soundSwitch).toHaveAttribute("aria-checked", "false");
   } finally {
     await context.close().catch(() => undefined);
     await pool.query("DELETE FROM orders WHERE id=$1", [orderId]);

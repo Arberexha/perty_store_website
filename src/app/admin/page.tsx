@@ -6,13 +6,15 @@ import { dateTime, euro } from "@/lib/admin/format";
 import { AdminChart } from "@/components/admin-chart";
 import { AdminIcon } from "@/components/admin-icon";
 import type { AdminIconName } from "@/components/admin-icon";
+import { requireAdmin } from "@/lib/auth/guard";
 
 const stageLabels: Record<string, string> = {
   new: "New", in_production: "In production", ready: "Ready", shipped: "Shipped", completed: "Completed", cancelled: "Cancelled",
 };
 
 export default async function AdminPage() {
-  const { counts, recent, activity, trends, recentDesigns, topProducts, orderStages } = await dashboard();
+  const [overview, user] = await Promise.all([dashboard(), requireAdmin()]);
+  const { counts, recent, activity, trends, recentDesigns, topProducts, orderStages } = overview;
   const openWork = counts.pending_orders + counts.pending_design_requests + counts.quotes;
   const metrics: { label: string; value: string | number; detail: string; href: string; icon: AdminIconName }[] = [
     { label: "Revenue · 30 days", value: euro(counts.revenue_30_cents), detail: `${euro(counts.revenue_cents)} all time`, href: "/admin/orders", icon: "revenue" },
@@ -29,7 +31,7 @@ export default async function AdminPage() {
 
   return <main className="admin-content admin-dashboard">
     <div className="admin-page-heading">
-      <div><span className="admin-kicker">SHOP OVERVIEW</span><h1>Dashboard</h1><p>Monitor sales, follow up on customer requests, and keep the catalogue ready.</p></div>
+      <div><span className="admin-kicker">SHOP OVERVIEW</span><h1>Good day, {user.name}.</h1><p>Here is what is happening across your store today.</p></div>
       <Link className="admin-primary" href="/admin/products/new">Add product <span aria-hidden="true">↗</span></Link>
     </div>
 

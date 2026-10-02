@@ -42,13 +42,16 @@ body:has(.admin-shell) { background: #f4f6f2; }
 .admin-topbar-title strong { color: var(--admin-ink); font-weight: 700; }
 .admin-topbar-title b { color: #a8b9aa; margin: 0 1px; }
 .admin-topbar-actions { gap: 16px; }
-.admin-order-sound { position: relative; }
-.admin-order-sound button { border: 1px solid #c9d8cd; border-radius: 7px; padding: 8px 11px; background: #fff; color: #24543a; font: 700 12px PertySharpSans,Arial,sans-serif; cursor: pointer; white-space: nowrap; }
-.admin-order-sound button[aria-pressed=true] { border-color: #176847; background: #eaf6ef; }
-.admin-order-sound button.is-alerting { background: #176847; color: #fff; }
-.admin-order-sound button:disabled { opacity: .6; cursor: wait; }
-.admin-order-sound button:focus-visible { outline: 3px solid #eda37a; outline-offset: 2px; }
-.admin-order-sound-error { position: absolute; top: calc(100% + 7px); right: 0; width: 220px; padding: 8px 10px; border: 1px solid #e4b9a9; border-radius: 6px; background: #fff5ef; color: #8c3c29; font-size: 11px; line-height: 1.4; box-shadow: 0 4px 12px #00000014; }
+.admin-sound-panel { max-width: 700px; }
+.admin-sound-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.admin-sound-row strong { display: block; margin-bottom: 5px; color: #2d4032; font-size: 13px; }
+.admin-sound-switch { flex: none; width: 48px; height: 28px; border: 0; border-radius: 999px; padding: 3px; background: #a8b5aa; cursor: pointer; transition: background .15s; }
+.admin-sound-switch[aria-checked=true] { background: #176847; }
+.admin-sound-switch span { display: block; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0003; transition: transform .15s; }
+.admin-sound-switch[aria-checked=true] span { transform: translateX(20px); }
+.admin-sound-switch:disabled { opacity: .6; cursor: wait; }
+.admin-sound-switch:focus-visible { outline: 3px solid #eda37a; outline-offset: 2px; }
+.admin-sound-error { margin: 12px 0 0; color: #8c3c29; font-size: 12px; }
 .admin-topbar-storefront { color: var(--admin-blue); font-weight: 700; }
 .admin-topbar-storefront:hover { text-decoration: underline; }
 .admin-topbar .text-button { border-left: 1px solid var(--admin-line); padding-left: 16px; color: #516458; font-size: 12px; font-weight: 700; cursor: pointer; }
@@ -173,7 +176,6 @@ body:has(.admin-shell) { background: #f4f6f2; }
 }
 
 @media (max-width: 500px) {
-  .admin-order-sound button { padding: 7px 8px; font-size: 11px; }
   .admin-topbar-storefront { display: none; }
   .admin-topbar-actions { gap: 0; }
   .admin-topbar > .admin-topbar-title { gap: 7px; font-size: 11px; }

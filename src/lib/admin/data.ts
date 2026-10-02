@@ -5,7 +5,7 @@ export type Category = { id: string; name: string; slug: string; age_restricted:
 export type Product = { id: string; category_id: string; category_name: string; name: string; slug: string; description: string; design_template: "pens" | "shirts" | "hats" | "lighters" | null; status: string; ordering_enabled: boolean; age_restricted: boolean; minimum_quantity: number; variant_count: number; priced_variant_count: number; created_at: Date; updated_at: Date; has_mockup: boolean; print_area: { left: number; top: number; right: number; bottom: number } | null };
 export type Variant = { id: string; product_id: string; sku: string; label: string; size: string; material: string; color: string; base_price_cents: number | null; active: boolean };
 export type Tier = { id: string; variant_id: string; minimum_quantity: number; unit_price_cents: number };
-export type Order = { id: string; customer_name: string; customer_email: string; status: string; fulfillment_method: string; total_cents: number; created_at: Date; admin_viewed_at: Date | null; admin_note: string; item_count: number; payment_status: string | null; confirmation_email_status: string; cancellation_email_status: string };
+export type Order = { id: string; customer_name: string; customer_email: string; status: string; fulfillment_method: string; shipping_address: string | null; total_cents: number; created_at: Date; admin_viewed_at: Date | null; admin_note: string; item_count: number; payment_status: string | null; confirmation_email_status: string; cancellation_email_status: string };
 export type Quote = { id: string; customer_name: string; customer_email: string; details: string; status: string; amount_cents: number | null; admin_note: string; created_at: Date; design_request_id: string | null; customer_note: string; revision: number; notification_email_status: string; order_id: string | null };
 export type Artwork = { id: string; original_name: string; mime_type: string; size_bytes: number; status: string; created_at: Date; customer_email: string | null };
 export type Pickup = { id: string; name: string; address: string; opening_hours: string; active: boolean };
@@ -40,6 +40,27 @@ export async function tiers(productId: string): Promise<Tier[]> {
 
 export async function orders(): Promise<Order[]> {
   return (await getPool().query<Order>(`SELECT o.*, count(i.id)::int AS item_count, p.status AS payment_status FROM orders o LEFT JOIN order_items i ON i.order_id = o.id LEFT JOIN LATERAL (SELECT status FROM payments WHERE order_id=o.id ORDER BY created_at DESC LIMIT 1) p ON true GROUP BY o.id,p.status ORDER BY o.created_at DESC LIMIT 100`)).rows;
+}
+
+export async function orderList({ status, search, page, pageSize }: { status: string; search: string; page: number; pageSize: number }) {
+  const db = getPool();
+  const where = `WHERE ($1 = 'all' OR o.status = $1)
+    AND ($2 = '' OR strpos(lower(concat_ws(' ', o.id, o.customer_name, o.customer_email, o.status, o.fulfillment_method, o.shipping_address)), $2) > 0)`;
+  const [allCount, filteredCount] = await Promise.all([
+    db.query<{ total: number }>("SELECT count(*)::int AS total FROM orders"),
+    db.query<{ total: number }>(`SELECT count(*)::int AS total FROM orders o ${where}`, [status, search]),
+  ]);
+  const total = filteredCount.rows[0].total;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const items = await db.query<Order>(`SELECT o.*, i.item_count, p.status AS payment_status
+    FROM orders o
+    LEFT JOIN LATERAL (SELECT count(*)::int AS item_count FROM order_items WHERE order_id = o.id) i ON true
+    LEFT JOIN LATERAL (SELECT status FROM payments WHERE order_id = o.id ORDER BY created_at DESC LIMIT 1) p ON true
+    ${where}
+    ORDER BY o.created_at DESC, o.id DESC
+    LIMIT $3 OFFSET $4`, [status, search, pageSize, (currentPage - 1) * pageSize]);
+  return { items: items.rows, total, allTotal: allCount.rows[0].total, page: currentPage, pageCount };
 }
 
 export async function designRequests(): Promise<DesignRequest[]> {

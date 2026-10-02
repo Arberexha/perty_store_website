@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 
 const CHECK_INTERVAL_MS = 10_000;
@@ -8,6 +8,17 @@ const ALERT_DURATION_MS = 5_000;
 const subscribeReady = () => () => {};
 const clientReady = () => true;
 const serverReady = () => false;
+const SOUND_PREFERENCE_KEY = "perty-admin-order-sound";
+
+type SoundContextValue = {
+  enabled: boolean;
+  starting: boolean;
+  alerting: boolean;
+  error: string;
+  toggle: () => Promise<void>;
+};
+
+const SoundContext = createContext<SoundContextValue | null>(null);
 
 async function latestOrderId(): Promise<string | null> {
   const response = await fetch("/api/admin/orders/latest", { cache: "no-store" });
@@ -17,7 +28,7 @@ async function latestOrderId(): Promise<string | null> {
   return result.latestOrderId;
 }
 
-export function AdminOrderSound() {
+export function AdminOrderSoundProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const ready = useSyncExternalStore(subscribeReady, clientReady, serverReady);
   const [enabled, setEnabled] = useState(false);
@@ -109,34 +120,76 @@ export function AdminOrderSound() {
     void audioRef.current?.close();
   }, []);
 
-  async function toggle() {
-    if (enabled) {
-      setEnabled(false);
-      stopAlert();
-      void audioRef.current?.suspend();
-      return;
-    }
+  const enable = useCallback(async (restoring = false) => {
     setStarting(true);
     setError("");
     try {
       if (!window.AudioContext) throw new Error("Sound is unavailable in this browser.");
       const audio = audioRef.current ?? new AudioContext();
       audioRef.current = audio;
-      await audio.resume();
+      if (restoring) void audio.resume().catch(() => undefined);
+      else await audio.resume();
       latestIdRef.current = await latestOrderId();
       setEnabled(true);
+      return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Sound could not be enabled.");
+      return false;
     } finally {
       setStarting(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        if (localStorage.getItem(SOUND_PREFERENCE_KEY) === "on") void enable(true);
+      } catch { /* Storage can be unavailable in private browsing. */ }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [enable]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const resume = () => { if (audioRef.current?.state === "suspended") void audioRef.current.resume().catch(() => undefined); };
+    document.addEventListener("pointerdown", resume);
+    document.addEventListener("keydown", resume);
+    return () => {
+      document.removeEventListener("pointerdown", resume);
+      document.removeEventListener("keydown", resume);
+    };
+  }, [enabled]);
+
+  async function toggle() {
+    if (enabled) {
+      setEnabled(false);
+      stopAlert();
+      void audioRef.current?.suspend();
+      try { localStorage.setItem(SOUND_PREFERENCE_KEY, "off"); } catch { /* Storage can be unavailable. */ }
+      return;
+    }
+    if (await enable()) {
+      try { localStorage.setItem(SOUND_PREFERENCE_KEY, "on"); } catch { /* Storage can be unavailable. */ }
+    }
   }
 
-  return <div className="admin-order-sound">
-    <button type="button" className={alerting ? "is-alerting" : ""} aria-pressed={enabled} disabled={!ready || starting} onClick={() => void toggle()}>
-      <span aria-hidden="true">{enabled ? "🔊" : "🔈"}</span> {starting ? "Enabling…" : alerting ? "New order!" : enabled ? "Sound on" : "Enable sound"}
-    </button>
-    {error && <span className="admin-order-sound-error">{error}</span>}
+  return <SoundContext.Provider value={{ enabled, starting: !ready || starting, alerting, error, toggle }}>
+    {children}
     <span className="visually-hidden" role="status">{error || (alerting ? "New order received. Sounding for five seconds." : "")}</span>
-  </div>;
+  </SoundContext.Provider>;
+}
+
+export function AdminOrderSoundSettings() {
+  const sound = useContext(SoundContext);
+  if (!sound) throw new Error("Admin sound settings must be inside the admin layout.");
+
+  return <section className="admin-panel admin-sound-panel">
+    <div className="panel-title"><h2>New order sound</h2><span>{sound.enabled ? "On" : "Off"}</span></div>
+    <div className="admin-sound-row">
+      <div><strong>Play a sound for new orders</strong><p className="form-help">Alerts play while this admin panel is open. Your choice is saved in this browser.</p></div>
+      <button type="button" role="switch" aria-label="New order sound" aria-checked={sound.enabled} disabled={sound.starting} onClick={() => void sound.toggle()} className="admin-sound-switch"><span /></button>
+    </div>
+    {sound.error && <p className="admin-sound-error" role="alert">{sound.error}</p>}
+    {sound.alerting && <p className="form-help">New order received.</p>}
+  </section>;
 }
