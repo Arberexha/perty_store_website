@@ -10,6 +10,7 @@ import { sendOrderConfirmation } from "@/lib/email/order-confirmation";
 import type { OrderConfirmation } from "@/lib/email/order-confirmation";
 import { orderTotal } from "@/lib/order-pricing";
 import type { PriceTier } from "@/lib/order-pricing";
+import { trackingPath, trackingUrl } from "@/lib/order-tracking";
 
 const MAX_BODY_BYTES = 8_000_000;
 
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   const id = randomUUID();
   let confirmation: OrderConfirmation;
+  let trackingToken = "";
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
@@ -83,13 +85,14 @@ export async function POST(request: NextRequest) {
     if (price.totalCents > 2_147_483_647) throw new OrderError("Order total is too large");
     if (price.totalCents !== input.expectedTotalCents) throw new OrderError("The price changed. Refresh the page and review the total before ordering.", 409);
 
-    await client.query(`INSERT INTO orders
+    const inserted = await client.query<{ tracking_token: string }>(`INSERT INTO orders
       (id,user_id,customer_name,customer_email,customer_phone,customer_note,fulfillment_method,pickup_location_id,shipping_address,shipping_zone_id,subtotal_cents,shipping_cents,total_cents,confirmation_email_status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending')`, [
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending') RETURNING tracking_token`, [
       id, user?.id ?? null, input.customerName, input.customerEmail.toLowerCase(), input.customerPhone,
       input.notes, input.fulfillmentMethod, pickupLocationId, shippingAddress, shippingZoneId,
       price.subtotalCents, price.shippingCents, price.totalCents,
     ]);
+    trackingToken = inserted.rows[0].tracking_token;
     await client.query(`INSERT INTO order_items
       (id,order_id,product_id,variant_id,product_name,variant_label,quantity,unit_price_cents,line_total_cents,design_data,preview_png)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [
@@ -103,7 +106,8 @@ export async function POST(request: NextRequest) {
       unitPriceCents: price.unitPriceCents, subtotalCents: price.subtotalCents,
       shippingCents: price.shippingCents, totalCents: price.totalCents,
       fulfillmentMethod: input.fulfillmentMethod, fulfillmentDetail, customerNote: input.notes,
-      productColor: input.productColor, personalizations: input.personalizations ?? [], previewPng: assets.preview };
+      productColor: input.productColor, personalizations: input.personalizations ?? [], previewPng: assets.preview,
+      trackingUrl: trackingUrl(trackingToken) };
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -120,5 +124,5 @@ export async function POST(request: NextRequest) {
   catch (error) { console.error("Could not record order email status", { orderId: id, error }); }
   revalidatePath("/admin/orders");
   revalidatePath("/account");
-  return NextResponse.json({ id, totalCents: confirmation.totalCents, emailStatus }, { status: 201 });
+  return NextResponse.json({ id, totalCents: confirmation.totalCents, emailStatus, trackingPath: trackingPath(trackingToken) }, { status: 201 });
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import nodemailer from "nodemailer";
 import { createServer } from "node:net";
 import { once } from "node:events";
-import { orderCancellationMail, orderCancellationMessage, orderConfirmationMail, orderConfirmationMessage, sendOrderCancellation, sendOrderConfirmation } from "./order-confirmation";
+import { orderCancellationMail, orderCancellationMessage, orderConfirmationMail, orderConfirmationMessage, orderStatusMessage, sendOrderCancellation, sendOrderConfirmation } from "./order-confirmation";
 import type { OrderConfirmation } from "./order-confirmation";
 
 const order: OrderConfirmation = {
@@ -13,6 +13,7 @@ const order: OrderConfirmation = {
   customerNote: "Blue <logo>", productColor: "#234567",
   personalizations: [{ name: "Sam", number: "7", size: "M" }],
   previewPng: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]),
+  trackingUrl: "https://perty.example/track/abc123",
 };
 
 describe("order confirmation email", () => {
@@ -22,6 +23,8 @@ describe("order confirmation email", () => {
     expect(message.text).toContain("Total: €35.00");
     expect(message.text).toContain("123 Test Street, Prishtina");
     expect(message.text).toContain("Payment has not been taken");
+    expect(message.text).toContain("https://perty.example/track/abc123");
+    expect(message.html).toContain("Track your order");
     expect(message.html).toContain("Alex &lt;Customer&gt;");
     expect(message.html).toContain("Blue &lt;logo&gt;");
     expect(message.html).not.toContain("Blue <logo>");
@@ -49,6 +52,14 @@ describe("order confirmation email", () => {
     const raw = info.message.toString();
     expect(raw).toContain("Content-ID: <order-design-preview>");
     expect(raw).toContain(order.previewPng!.toString("base64"));
+  });
+
+  it("includes a private tracking link in a status update", () => {
+    const message = orderStatusMessage(order, "ready");
+    expect(message.subject).toContain("Ready for delivery");
+    expect(message.text).toContain("https://perty.example/track/abc123");
+    expect(message.html).toContain("Track your order");
+    expect(message.html).not.toContain("Blue <logo>");
   });
 
   it("delivers the email to a configured SMTP server", async () => {

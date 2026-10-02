@@ -7,7 +7,8 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/guard";
 import { getPool } from "@/lib/db";
 import { loadOrderEmailDetails } from "@/lib/email/order-data";
-import { sendOrderCancellation } from "@/lib/email/order-confirmation";
+import { sendOrderCancellation, sendOrderStatusUpdate } from "@/lib/email/order-confirmation";
+import type { OrderStatus } from "@/lib/order-tracking";
 import { parseEuro, slugify } from "@/lib/admin/format";
 import { productOrderingError } from "@/lib/admin/policy";
 import { isDesignTemplate } from "@/lib/catalog-config";
@@ -240,36 +241,41 @@ export async function updateOrder(form: FormData) {
     if (!["new", "in_production", "ready", "shipped", "completed", "cancelled"].includes(status)) throw new InputError("Choose a valid order status");
     const note = optionalText(form, "admin_note");
     const client = await getPool().connect();
-    let newlyCancelled = false;
+    let statusChanged = false;
     try {
       await client.query("BEGIN");
       const previous = await client.query<{ status: string }>("SELECT status FROM orders WHERE id=$1 FOR UPDATE", [id]);
       if (!previous.rows[0]) throw new InputError("Order not found");
-      newlyCancelled = status === "cancelled" && previous.rows[0].status !== "cancelled";
+      statusChanged = previous.rows[0].status !== status;
+      const newlyCancelled = statusChanged && status === "cancelled";
       await client.query(`UPDATE orders SET status=$2,admin_note=$3,updated_at=now(),
         cancellation_email_status=CASE WHEN $4 THEN 'pending' WHEN $2 <> 'cancelled' THEN 'not_requested' ELSE cancellation_email_status END,
-        cancellation_email_sent_at=CASE WHEN $4 OR $2 <> 'cancelled' THEN NULL ELSE cancellation_email_sent_at END
-        WHERE id=$1`, [id, status, note, newlyCancelled]);
+        cancellation_email_sent_at=CASE WHEN $4 OR $2 <> 'cancelled' THEN NULL ELSE cancellation_email_sent_at END,
+        status_email_status=CASE WHEN $5 AND $2 <> 'cancelled' THEN 'pending' ELSE status_email_status END,
+        status_email_sent_at=CASE WHEN $5 AND $2 <> 'cancelled' THEN NULL ELSE status_email_sent_at END
+        WHERE id=$1`, [id, status, note, newlyCancelled, statusChanged]);
       await client.query("INSERT INTO admin_audit_log (id,actor_user_id,action,entity_type,entity_id) VALUES ($1,$2,$3,$4,$5)", [randomUUID(), actor, "updated", "order", id]);
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
     } finally { client.release(); }
-    if (!newlyCancelled) return;
+    if (!statusChanged) return;
     let emailStatus: "sent" | "failed" | "not_configured";
     try {
       const order = await loadOrderEmailDetails(id);
       if (!order) throw new Error("Order email details unavailable");
-      emailStatus = await sendOrderCancellation(order);
+      emailStatus = status === "cancelled" ? await sendOrderCancellation(order) : await sendOrderStatusUpdate(order, status as OrderStatus);
     } catch (error) {
       emailStatus = "failed";
-      console.error("Order cancellation email failed", { orderId: id, error });
+      console.error("Order status email failed", { orderId: id, error });
     }
-    await getPool().query("UPDATE orders SET cancellation_email_status=$2,cancellation_email_sent_at=CASE WHEN $2='sent' THEN now() ELSE NULL END WHERE id=$1", [id, emailStatus]);
+    await getPool().query(status === "cancelled"
+      ? "UPDATE orders SET cancellation_email_status=$2,cancellation_email_sent_at=CASE WHEN $2='sent' THEN now() ELSE NULL END WHERE id=$1"
+      : "UPDATE orders SET status_email_status=$2,status_email_sent_at=CASE WHEN $2='sent' THEN now() ELSE NULL END WHERE id=$1", [id, emailStatus]);
     if (emailStatus !== "sent") {
       revalidatePath("/admin/orders");
-      throw new InputError(emailStatus === "not_configured" ? "Order cancelled, but email is not configured." : "Order cancelled, but the email could not be sent.");
+      throw new InputError(emailStatus === "not_configured" ? "Order status saved, but email is not configured." : "Order status saved, but the email could not be sent.");
     }
   });
 }

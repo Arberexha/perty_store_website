@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { FormEvent } from "react";
+import Link from "next/link";
 import type { OrderOptions } from "@/lib/order-options";
 import { orderTotal } from "@/lib/order-pricing";
 
@@ -13,9 +14,9 @@ export type OrderDetails = {
 
 const money = (cents: number) => new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR" }).format(cents / 100);
 
-export default function OrderCheckout({ options, minimumQuantity, customer, submitting, error, placedId, emailStatus, onPlace }: {
+export default function OrderCheckout({ options, minimumQuantity, customer, submitting, error, placedId, trackingPath, emailStatus, onPlace }: {
   options: OrderOptions; minimumQuantity: number; customer: { name: string; email: string } | null;
-  submitting: boolean; error: string | null; placedId: string | null; emailStatus: "sent" | "failed" | "not_configured" | null; onPlace: (details: OrderDetails) => Promise<void>;
+  submitting: boolean; error: string | null; placedId: string | null; trackingPath: string | null; emailStatus: "sent" | "failed" | "not_configured" | null; onPlace: (details: OrderDetails) => Promise<void>;
 }) {
   const [variantId, setVariantId] = useState(options.variants[0]?.id ?? "");
   const [quantity, setQuantity] = useState(minimumQuantity);
@@ -43,7 +44,7 @@ export default function OrderCheckout({ options, minimumQuantity, customer, subm
     });
   }
 
-  if (placedId) return <div className="studio-order-success" role="status"><strong>Order placed</strong><p>Reference <code>#{placedId.slice(0, 8)}</code>. Save this number. {emailStatus === "sent" ? "A confirmation email with your design preview and order details was sent to your email address." : "A confirmation email could not be sent; please save this reference."} Your order is unpaid; the shop will contact you about payment and fulfillment.</p></div>;
+  if (placedId) return <div className="studio-order-success" role="status"><strong>Order placed</strong><p>Reference <code>#{placedId.slice(0, 8)}</code>. {emailStatus === "sent" ? "A confirmation email with your design preview and order details was sent to your email address." : "A confirmation email could not be sent; please save your tracking link."} Your order is unpaid; the shop will contact you about payment and fulfillment.</p>{trackingPath && <p><Link href={trackingPath}>Track your order →</Link><br /><small>Save this private link. Anyone with it can view your order progress.</small></p>}</div>;
 
   return <form onSubmit={submit} className="studio-order-form">
     <div className="studio-order-fields">

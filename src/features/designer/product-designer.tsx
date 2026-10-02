@@ -61,6 +61,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   const [submitting, setSubmitting] = useState(false);
   const [submittedId, setSubmittedId] = useState<string | null>(null);
   const [placedId, setPlacedId] = useState<string | null>(null);
+  const [orderTrackingPath, setOrderTrackingPath] = useState<string | null>(null);
   const [orderEmailStatus, setOrderEmailStatus] = useState<"sent" | "failed" | "not_configured" | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const visibleLayers = useMemo(() => product === "shirts" ? layers.filter((layer) => (layer.side ?? "front") === shirtSide) : layers, [product, layers, shirtSide]);
@@ -534,9 +535,10 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
         previewHeight: product === "shirts" ? preview.height : undefined,
         productColors: [...new Set([productColor, ...colorVariants])], previewPng: preview.png,
       }) });
-      const result = await response.json().catch(() => null) as { id?: string; emailStatus?: "sent" | "failed" | "not_configured"; error?: string } | null;
+      const result = await response.json().catch(() => null) as { id?: string; trackingPath?: string; emailStatus?: "sent" | "failed" | "not_configured"; error?: string } | null;
       if (!response.ok || !result?.id) throw new Error(result?.error ?? "Could not place your order. Please try again.");
       setPlacedId(result.id);
+      setOrderTrackingPath(result.trackingPath ?? null);
       setOrderEmailStatus(result.emailStatus ?? "failed");
       setMessage("Your order was placed. The shop will contact you about payment and fulfillment.");
     } catch (error) { setSubmitError(error instanceof Error ? error.message : "Could not place your order. Please try again."); }
@@ -640,7 +642,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
         </div>
         {canRequest && <section className="studio-order-request" id="send-design" aria-labelledby="send-design-title">
           <div><span className="store-kicker">WHEN YOUR DESIGN IS READY</span><h2 id="send-design-title">{canOrder ? "Place your order." : "Send it to our team."}</h2><p>{canOrder ? "Choose your product option, quantity, and pickup or delivery. Review the total before placing an unpaid order. The shop will contact you about payment and fulfillment." : "We will review your design and contact you to confirm options, price, and delivery or pickup. Sending this request does not place a paid order."}</p></div>
-          {canOrder && orderOptions ? <OrderCheckout options={orderOptions} minimumQuantity={minimumQuantity} customer={customer} submitting={submitting} error={submitError} placedId={placedId} emailStatus={orderEmailStatus} onPlace={placeOrder} /> : submittedId ? <div className="studio-order-success" role="status"><strong>Design request sent</strong><p>Reference <code>#{submittedId.slice(0, 8)}</code>. Our team can now see your design in the admin panel and will contact you using the email provided.</p><button type="button" onClick={() => { setSubmittedId(null); setSubmitError(null); }}>Send another request</button></div> : <form onSubmit={submitDesign} className="studio-order-form">
+          {canOrder && orderOptions ? <OrderCheckout options={orderOptions} minimumQuantity={minimumQuantity} customer={customer} submitting={submitting} error={submitError} placedId={placedId} trackingPath={orderTrackingPath} emailStatus={orderEmailStatus} onPlace={placeOrder} /> : submittedId ? <div className="studio-order-success" role="status"><strong>Design request sent</strong><p>Reference <code>#{submittedId.slice(0, 8)}</code>. Our team can now see your design in the admin panel and will contact you using the email provided.</p><button type="button" onClick={() => { setSubmittedId(null); setSubmitError(null); }}>Send another request</button></div> : <form onSubmit={submitDesign} className="studio-order-form">
             <div className="studio-order-fields"><label>Your name<input name="customer_name" type="text" autoComplete="name" required minLength={2} maxLength={120} /></label><label>Email address<input name="customer_email" type="email" autoComplete="email" required maxLength={254} /></label><label>Phone (optional)<input name="customer_phone" type="tel" autoComplete="tel" maxLength={40} /></label><label>Quantity<input name="quantity" type="number" min={1} max={1000} defaultValue={1} required /></label></div>
             <label>Notes for the team<textarea name="notes" rows={3} maxLength={2000} placeholder="Sizes, deadline, delivery area, or anything else we should know" /></label>
             {submitError && <p className="studio-order-error" role="alert">{submitError}</p>}

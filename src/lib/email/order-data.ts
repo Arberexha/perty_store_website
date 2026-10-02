@@ -1,9 +1,10 @@
 import "server-only";
 import { getPool } from "@/lib/db";
 import type { OrderConfirmation } from "./order-confirmation";
+import { trackingUrl } from "@/lib/order-tracking";
 
 type OrderEmailRow = {
-  id: string; customer_name: string; customer_email: string; customer_note: string;
+  id: string; tracking_token: string; customer_name: string; customer_email: string; customer_note: string;
   fulfillment_method: "pickup" | "delivery"; shipping_address: string | null;
   pickup_name: string | null; pickup_address: string | null; pickup_hours: string | null;
   zone_name: string | null; subtotal_cents: number; shipping_cents: number; total_cents: number;
@@ -13,7 +14,7 @@ type OrderEmailRow = {
 };
 
 export async function loadOrderEmailDetails(id: string): Promise<OrderConfirmation | null> {
-  const result = await getPool().query<OrderEmailRow>(`SELECT o.id,o.customer_name,o.customer_email,o.customer_note,o.fulfillment_method,o.shipping_address,
+  const result = await getPool().query<OrderEmailRow>(`SELECT o.id,o.tracking_token,o.customer_name,o.customer_email,o.customer_note,o.fulfillment_method,o.shipping_address,
     o.subtotal_cents,o.shipping_cents,o.total_cents,
     l.name AS pickup_name,l.address AS pickup_address,l.opening_hours AS pickup_hours,z.name AS zone_name,
     i.product_name,i.variant_label,i.quantity,i.unit_price_cents,i.design_data,i.preview_png
@@ -33,6 +34,6 @@ export async function loadOrderEmailDetails(id: string): Promise<OrderConfirmati
     fulfillmentMethod: row.fulfillment_method, fulfillmentDetail,
     customerNote: row.customer_note, productColor: row.design_data?.productColor ?? "—",
     personalizations: Array.isArray(row.design_data?.personalizations) ? row.design_data.personalizations : [],
-    previewPng: row.preview_png,
+    previewPng: row.preview_png, trackingUrl: trackingUrl(row.tracking_token),
   };
 }
