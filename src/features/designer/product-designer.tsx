@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent, PointerEvent } from "react";
 import type { OrderOptions } from "@/lib/order-options";
 import type { SavedDesignData } from "@/lib/saved-design";
+import type { ReorderDraft } from "@/lib/reorder";
 import OrderCheckout from "./order-checkout";
 import type { ReadyTiming } from "@/lib/ready-estimate";
 import type { OrderReadyEstimate } from "@/lib/ready-estimate";
@@ -20,7 +21,7 @@ import { canvasPoint, hitLayer, loadImage, loadProductPhoto, render } from "./ca
 
 const legacyProductIds: Record<Product, string> = { pens: "product-pen", shirts: "product-tshirt", hats: "product-hat", lighters: "product-lighter" };
 
-export default function ProductDesigner({ product, catalogProductId, catalogName, catalogAgeRestricted, catalogImageUrl, catalogPrintArea, catalogProducts, orderOptions, minimumQuantity, readyTiming, orderDate, customer, savedDesignId }: { product: Product; catalogProductId: string; catalogName: string; catalogAgeRestricted: boolean; catalogImageUrl: string | null; catalogPrintArea: PrintArea | null; catalogProducts: { id: string; name: string; slug: string; design_template: Product; age_restricted: boolean }[]; orderOptions: OrderOptions | null; minimumQuantity: number; readyTiming: ReadyTiming; orderDate: string; customer: { name: string; email: string } | null; savedDesignId: string | null }) {
+export default function ProductDesigner({ product, catalogProductId, catalogName, catalogAgeRestricted, catalogImageUrl, catalogPrintArea, catalogProducts, orderOptions, minimumQuantity, readyTiming, orderDate, customer, savedDesignId, reorderOrderId }: { product: Product; catalogProductId: string; catalogName: string; catalogAgeRestricted: boolean; catalogImageUrl: string | null; catalogPrintArea: PrintArea | null; catalogProducts: { id: string; name: string; slug: string; design_template: Product; age_restricted: boolean }[]; orderOptions: OrderOptions | null; minimumQuantity: number; readyTiming: ReadyTiming; orderDate: string; customer: { name: string; email: string } | null; savedDesignId: string | null; reorderOrderId: string | null }) {
   const config = products[product];
   const customPhoto = Boolean(catalogImageUrl);
   const customArea = customPhoto ? (catalogPrintArea ?? DEFAULT_PRINT_AREA) : null;
@@ -56,6 +57,8 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   const [layers, setLayers] = useState<Layer[]>(() => product === "shirts" ? [] : initialLayers.map((layer) => ({ ...layer, font: "PertySharpSans", color: "#000000", x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: product === "lighters" ? .52 : product === "hats" ? .75 : product === "pens" ? .65 : 1 })));
   const [selectedId, setSelectedId] = useState<string | null>(product === "shirts" ? null : "starter");
   const [loaded, setLoaded] = useState(false);
+  const [reorderDraft, setReorderDraft] = useState<ReorderDraft | null>(null);
+  const [reorderError, setReorderError] = useState<string | null>(null);
   const [accountDesignId, setAccountDesignId] = useState<string | null>(savedDesignId);
   const [designName, setDesignName] = useState(`My ${catalogName} design`);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -105,7 +108,15 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
       if (!active) return;
       try {
         let saved: string | null = null;
-        if (savedDesignId) {
+        if (reorderOrderId) {
+          const response = await fetch(`/api/orders/${encodeURIComponent(reorderOrderId)}/reorder`, { cache: "no-store" });
+          const result = await response.json() as { productId?: string; design?: SavedDesignData; checkout?: ReorderDraft["checkout"]; error?: string };
+          if (!active) return;
+          if (!response.ok || result.productId !== catalogProductId || !result.design || !result.checkout) throw new Error(result.error ?? "This order cannot be reopened for this product.");
+          saved = JSON.stringify(result.design);
+          setReorderDraft({ design: result.design, checkout: result.checkout });
+          setMessage(`Order #${reorderOrderId.slice(0, 8)} opened for a new print run. Review the design and current price before ordering.`);
+        } else if (savedDesignId) {
           const response = await fetch(`/api/saved-designs/${encodeURIComponent(savedDesignId)}`, { cache: "no-store" });
           const result = await response.json() as { id?: string; name?: string; productId?: string; design?: SavedDesignData; error?: string };
           if (!active) return;
@@ -129,18 +140,21 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
             setSelectedId(valid[0]?.id ?? null);
           }
         }
-      } catch (error) { if (savedDesignId) { setAccountDesignId(null); setMessage(error instanceof Error ? error.message : "Could not open the saved design."); } }
+      } catch (error) {
+        if (savedDesignId) { setAccountDesignId(null); setMessage(error instanceof Error ? error.message : "Could not open the saved design."); }
+        if (reorderOrderId) setReorderError(error instanceof Error ? error.message : "Could not reopen this order.");
+      }
       setLoaded(true);
     }
     void loadDraft();
     return () => { active = false; };
-  }, [STORAGE_KEY, catalogProductId, catalogName, product, customPhoto, savedDesignId]);
+  }, [STORAGE_KEY, catalogProductId, catalogName, product, customPhoto, savedDesignId, reorderOrderId]);
 
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || reorderOrderId) return;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ productColor, layers, shirtSide, personalizations, colorVariants })); }
     catch { queueMicrotask(() => setMessage("This browser could not save the draft. Download a preview to keep a copy.")); }
-  }, [loaded, productColor, layers, shirtSide, personalizations, colorVariants, STORAGE_KEY]);
+  }, [loaded, productColor, layers, shirtSide, personalizations, colorVariants, STORAGE_KEY, reorderOrderId]);
 
   useEffect(() => {
     let active = true;
@@ -648,15 +662,15 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
           </aside>
         </div>
         {canRequest && <section className="studio-order-request" id="send-design" aria-labelledby="send-design-title">
-          <div><span className="store-kicker">WHEN YOUR DESIGN IS READY</span><h2 id="send-design-title">{canOrder ? "Place your order." : "Send it to our team."}</h2><p>{canOrder ? "Choose your product option, quantity, and pickup or delivery. Review the total before placing an unpaid order. The shop will contact you about payment and fulfillment." : "We will review your design and contact you to confirm options, price, and delivery or pickup. Sending this request does not place a paid order."}</p></div>
-          {canOrder && orderOptions ? <OrderCheckout options={orderOptions} minimumQuantity={minimumQuantity} timing={readyTiming} orderDate={orderDate} customer={customer} submitting={submitting} error={submitError} placedId={placedId} trackingPath={orderTrackingPath} emailStatus={orderEmailStatus} onPlace={placeOrder} /> : submittedId ? <div className="studio-order-success" role="status"><strong>Design request sent</strong><p>Reference <code>#{submittedId.slice(0, 8)}</code>. Our team can now see your design in the admin panel and will contact you using the email provided.</p><button type="button" onClick={() => { setSubmittedId(null); setSubmitError(null); }}>Send another request</button></div> : <form onSubmit={submitDesign} className="studio-order-form">
+          <div><span className="store-kicker">WHEN YOUR DESIGN IS READY</span><h2 id="send-design-title">{reorderOrderId ? "Order again." : canOrder ? "Place your order." : "Send it to our team."}</h2><p>{reorderOrderId ? "Your previous artwork and choices are loaded. Review the design, current price, quantity, and pickup or delivery before placing a new unpaid order." : canOrder ? "Choose your product option, quantity, and pickup or delivery. Review the total before placing an unpaid order. The shop will contact you about payment and fulfillment." : "We will review your design and contact you to confirm options, price, and delivery or pickup. Sending this request does not place a paid order."}</p></div>
+          {reorderOrderId && !loaded ? <p role="status">Opening your previous order…</p> : reorderError ? <p className="studio-order-error" role="alert">{reorderError} <Link href="/account">Return to My account</Link></p> : canOrder && orderOptions ? <OrderCheckout options={orderOptions} minimumQuantity={minimumQuantity} timing={readyTiming} orderDate={orderDate} customer={customer} initialOrder={reorderDraft?.checkout ?? null} submitting={submitting} error={submitError} placedId={placedId} trackingPath={orderTrackingPath} emailStatus={orderEmailStatus} onPlace={placeOrder} /> : submittedId ? <div className="studio-order-success" role="status"><strong>Design request sent</strong><p>Reference <code>#{submittedId.slice(0, 8)}</code>. Our team can now see your design in the admin panel and will contact you using the email provided.</p><button type="button" onClick={() => { setSubmittedId(null); setSubmitError(null); }}>Send another request</button></div> : <form onSubmit={submitDesign} className="studio-order-form">
             <div className="studio-order-fields"><label>Your name<input name="customer_name" type="text" autoComplete="name" required minLength={2} maxLength={120} /></label><label>Email address<input name="customer_email" type="email" autoComplete="email" required maxLength={254} /></label><label>Phone (optional)<input name="customer_phone" type="tel" autoComplete="tel" maxLength={40} /></label><label>Quantity<input name="quantity" type="number" min={1} max={1000} defaultValue={1} required /></label></div>
             <label>Notes for the team<textarea name="notes" rows={3} maxLength={2000} placeholder="Sizes, deadline, delivery area, or anything else we should know" /></label>
             {submitError && <p className="studio-order-error" role="alert">{submitError}</p>}
             <button type="submit" disabled={submitting}>{submitting ? "Sending design…" : "Send design request"}</button>
           </form>}
         </section>}
-        <p className="studio-message" role="status">{message}</p><p className="studio-disclaimer">Your draft is kept in this browser. Sign in and save it to My designs to continue on another device. {canOrder ? "Orders are placed without online payment. The shop will contact you about payment and fulfillment." : canRequest ? "Design requests are reviewed by staff before price, production, or delivery is confirmed." : "This 18+ product cannot be ordered online."}</p>
+        <p className="studio-message" role="status">{message}</p><p className="studio-disclaimer">{reorderOrderId ? "Save the design to My designs if you want to keep your changes for later." : "Your draft is kept in this browser. Sign in and save it to My designs to continue on another device."} {canOrder ? "Orders are placed without online payment. The shop will contact you about payment and fulfillment." : canRequest ? "Design requests are reviewed by staff before price, production, or delivery is confirmed." : "This 18+ product cannot be ordered online."}</p>
       </div>
     </main>
   );
