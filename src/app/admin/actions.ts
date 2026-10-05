@@ -35,6 +35,21 @@ function positiveInteger(form: FormData, key: string): number {
   return value;
 }
 
+function optionalInteger(form: FormData, key: string, min: number, max: number): number | null {
+  const raw = form.get(key);
+  if (raw == null || raw === "") return null;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < min || value > max) throw new InputError(`Enter a valid ${key.replaceAll("_", " ")}`);
+  return value;
+}
+
+function dayRange(form: FormData, prefix: string, min: number, max: number): [number | null, number | null] {
+  const start = optionalInteger(form, `${prefix}_min_days`, min, max);
+  const end = optionalInteger(form, `${prefix}_max_days`, min, max);
+  if ((start === null) !== (end === null) || (start !== null && end !== null && end < start)) throw new InputError(`Enter a valid ${prefix} day range`);
+  return [start, end];
+}
+
 function euroAmount(form: FormData, key: string, optional = false): number | null {
   const raw = form.get(key);
   if (optional && (raw == null || raw === "")) return null;
@@ -143,7 +158,11 @@ export async function updateProduct(form: FormData) {
       if (error) throw new InputError(error);
     }
     const removeMockup = form.has("remove_mockup");
-    const result = await getPool().query(`UPDATE products SET category_id=$2,name=$3,description=$4,status=$5,ordering_enabled=$6,age_restricted=$7,minimum_quantity=$8,design_template=$9,print_area=$10,mockup_image=CASE WHEN $13 THEN NULL WHEN $11::bytea IS NOT NULL THEN $11 ELSE mockup_image END,mockup_mime=CASE WHEN $13 THEN NULL WHEN $12::text IS NOT NULL THEN $12 ELSE mockup_mime END,updated_at=now() WHERE id=$1`, [id, categoryId, text(form, "name", 120), optionalText(form, "description"), status, orderable, ageRestricted, positiveInteger(form, "minimum_quantity"), template, JSON.stringify(mockup.area), mockup.bytes, mockup.mime, removeMockup]);
+    const [productionMin, productionMax] = dayRange(form, "production", 1, 60);
+    const bulkThreshold = optionalInteger(form, "bulk_threshold", 2, 1000);
+    const bulkExtraDays = optionalInteger(form, "bulk_extra_days", 1, 60);
+    if ((bulkThreshold === null) !== (bulkExtraDays === null)) throw new InputError("Enter both bulk quantity and extra days");
+    const result = await getPool().query(`UPDATE products SET category_id=$2,name=$3,description=$4,status=$5,ordering_enabled=$6,age_restricted=$7,minimum_quantity=$8,design_template=$9,print_area=$10,mockup_image=CASE WHEN $13 THEN NULL WHEN $11::bytea IS NOT NULL THEN $11 ELSE mockup_image END,mockup_mime=CASE WHEN $13 THEN NULL WHEN $12::text IS NOT NULL THEN $12 ELSE mockup_mime END,production_min_days=$14,production_max_days=$15,bulk_threshold=$16,bulk_extra_days=$17,updated_at=now() WHERE id=$1`, [id, categoryId, text(form, "name", 120), optionalText(form, "description"), status, orderable, ageRestricted, positiveInteger(form, "minimum_quantity"), template, JSON.stringify(mockup.area), mockup.bytes, mockup.mime, removeMockup, productionMin, productionMax, bulkThreshold, bulkExtraDays]);
     if (!result.rowCount) throw new InputError("Product not found");
     await audit(actor, "updated", "product", id);
   });
@@ -316,8 +335,19 @@ export async function createPickup(form: FormData) {
 export async function createShipping(form: FormData) {
   await mutate("/admin/settings", async (actor) => {
     const id = randomUUID();
-    await getPool().query("INSERT INTO shipping_zones (id,name,description,fee_cents) VALUES ($1,$2,$3,$4)", [id, text(form, "name", 120), optionalText(form, "description", 500), euroAmount(form, "fee")]);
+    const [transitMin, transitMax] = dayRange(form, "transit", 0, 30);
+    await getPool().query("INSERT INTO shipping_zones (id,name,description,fee_cents,transit_min_days,transit_max_days) VALUES ($1,$2,$3,$4,$5,$6)", [id, text(form, "name", 120), optionalText(form, "description", 500), euroAmount(form, "fee"), transitMin, transitMax]);
     await audit(actor, "created", "shipping_zone", id);
+  });
+}
+
+export async function updateShippingTransit(form: FormData) {
+  await mutate("/admin/settings", async (actor) => {
+    const id = text(form, "id", 100);
+    const [transitMin, transitMax] = dayRange(form, "transit", 0, 30);
+    const result = await getPool().query("UPDATE shipping_zones SET transit_min_days=$2,transit_max_days=$3 WHERE id=$1", [id, transitMin, transitMax]);
+    if (!result.rowCount) throw new InputError("Shipping zone not found");
+    await audit(actor, "updated", "shipping_zone", id);
   });
 }
 

@@ -3,6 +3,7 @@ import Link from "next/link";
 import MotionEffects from "@/components/motion-effects";
 import { QuoteNotificationRefresh } from "@/components/quote-notification-refresh";
 import { QuoteNotifications, type QuoteNotification } from "@/components/quote-notifications";
+import { OrderAnnouncementBanner } from "@/components/order-announcement";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPool } from "@/lib/db";
 import "./globals.css";
@@ -39,6 +40,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <Link className="header-design-link" href="/#shop-categories">Start designing <span aria-hidden="true">↗</span></Link>
           </div>
         </header>
+        <OrderAnnouncementBanner />
         {children}
         <footer className="site-footer"><div className="footer-about"><Link className="footer-brand" href="/">PERTY PRINT<span>.</span></Link><p>Your artwork, words, and ideas printed onto everyday products in Kosovo.</p></div><div className="footer-links"><strong>EXPLORE</strong><nav aria-label="Footer shop navigation"><Link href="/#shop-categories">Categories</Link><Link href="/#try-design">Print ideas</Link><Link href="/#products">Shop products</Link></nav></div><div className="footer-links"><strong>HELPFUL LINKS</strong><nav aria-label="Footer information navigation"><Link href="/#how-it-works">How it works</Link><Link href="/#faq">Questions</Link><Link href="/register">Create account</Link><Link href="/login">Sign in</Link></nav></div><small>© {new Date().getFullYear()} Perty Print</small></footer>
       </body>

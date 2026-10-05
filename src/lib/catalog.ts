@@ -14,12 +14,16 @@ export type StorefrontProduct = {
   age_restricted: boolean;
   ordering_enabled: boolean;
   minimum_quantity: number;
+  production_min_days: number | null;
+  production_max_days: number | null;
+  bulk_threshold: number | null;
+  bulk_extra_days: number | null;
   image_url: string | null;
   print_area: PrintArea | null;
 };
 
 export async function storefrontProducts(): Promise<StorefrontProduct[]> {
-  const result = await getPool().query<Omit<StorefrontProduct, "image_url"> & { updated_at: Date; has_mockup: boolean }>(`SELECT id,name,slug,description,design_template,age_restricted,ordering_enabled,minimum_quantity,print_area,updated_at,(mockup_image IS NOT NULL) AS has_mockup
+  const result = await getPool().query<Omit<StorefrontProduct, "image_url"> & { updated_at: Date; has_mockup: boolean }>(`SELECT id,name,slug,description,design_template,age_restricted,ordering_enabled,minimum_quantity,production_min_days,production_max_days,bulk_threshold,bulk_extra_days,print_area,updated_at,(mockup_image IS NOT NULL) AS has_mockup
     FROM products WHERE status='published' AND design_template IS NOT NULL
     ORDER BY created_at,name`);
   return result.rows.map(({ updated_at, has_mockup, ...item }) => ({ ...item, image_url: has_mockup ? productImageUrl(item.id, updated_at) : null }));

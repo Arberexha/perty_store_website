@@ -5,6 +5,8 @@ import type { FormEvent } from "react";
 import Link from "next/link";
 import type { OrderOptions } from "@/lib/order-options";
 import { orderTotal } from "@/lib/order-pricing";
+import { addBusinessDays, readyDayRange } from "@/lib/ready-estimate";
+import type { ReadyTiming } from "@/lib/ready-estimate";
 
 export type OrderDetails = {
   customerName: string; customerEmail: string; customerPhone: string; quantity: number; notes: string;
@@ -14,8 +16,8 @@ export type OrderDetails = {
 
 const money = (cents: number) => new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR" }).format(cents / 100);
 
-export default function OrderCheckout({ options, minimumQuantity, customer, submitting, error, placedId, trackingPath, emailStatus, onPlace }: {
-  options: OrderOptions; minimumQuantity: number; customer: { name: string; email: string } | null;
+export default function OrderCheckout({ options, minimumQuantity, timing, orderDate, customer, submitting, error, placedId, trackingPath, emailStatus, onPlace }: {
+  options: OrderOptions; minimumQuantity: number; timing: ReadyTiming; orderDate: string; customer: { name: string; email: string } | null;
   submitting: boolean; error: string | null; placedId: string | null; trackingPath: string | null; emailStatus: "sent" | "failed" | "not_configured" | null; onPlace: (details: OrderDetails) => Promise<void>;
 }) {
   const [variantId, setVariantId] = useState(options.variants[0]?.id ?? "");
@@ -23,9 +25,13 @@ export default function OrderCheckout({ options, minimumQuantity, customer, subm
   const [fulfillmentMethod, setFulfillmentMethod] = useState<"pickup" | "delivery">("pickup");
   const [pickupLocationId, setPickupLocationId] = useState(options.pickup[0]?.id ?? "");
   const [shippingZoneId, setShippingZoneId] = useState(options.shipping[0]?.id ?? "");
+  const [year, month, day] = orderDate.split("-").map(Number);
+  const today = new Date(year, month - 1, day);
   const variant = options.variants.find((item) => item.id === variantId) ?? options.variants[0];
   const shipping = options.shipping.find((item) => item.id === shippingZoneId);
   const price = orderTotal(variant.base_price_cents, variant.tiers, quantity || minimumQuantity, fulfillmentMethod === "delivery" ? shipping?.fee_cents ?? 0 : 0);
+  const ready = readyDayRange(timing, quantity, fulfillmentMethod === "delivery" ? { min: shipping?.transit_min_days ?? null, max: shipping?.transit_max_days ?? null } : null);
+  const dateLabel = (days: number) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" }).format(addBusinessDays(today, days));
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -58,6 +64,7 @@ export default function OrderCheckout({ options, minimumQuantity, customer, subm
     {fulfillmentMethod === "pickup" ? <label>Pickup location<select value={pickupLocationId} onChange={(event) => setPickupLocationId(event.target.value)}>{options.pickup.length ? options.pickup.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.address}</option>) : <option value="">Arrange with shop</option>}</select></label> : <><label>Delivery zone<select value={shippingZoneId} onChange={(event) => setShippingZoneId(event.target.value)} required>{options.shipping.map((item) => <option key={item.id} value={item.id}>{item.name} · {money(item.fee_cents)}</option>)}</select></label><label>Delivery address<textarea name="shipping_address" rows={3} minLength={10} maxLength={500} required placeholder="Street, city, postal code, country" /></label></>}
     <label>Notes for the team<textarea name="notes" rows={3} maxLength={2000} placeholder="Size details, deadline, or other instructions" /></label>
     <div className="studio-order-totals"><span>{quantity} × {money(price.unitPriceCents)}</span><strong>{money(price.subtotalCents)}</strong><span>{fulfillmentMethod === "delivery" ? "Delivery" : "Pickup"}</span><strong>{money(price.shippingCents)}</strong><span>Total</span><strong>{money(price.totalCents)}</strong></div>
+    <div className="studio-ready-estimate" aria-live="polite"><strong>{fulfillmentMethod === "pickup" ? "Estimated ready for pickup" : ready?.deliveryIncluded ? "Estimated delivery" : "Estimated production ready"}</strong>{ready ? <><span>{dateLabel(ready.min)}{ready.max === ready.min ? "" : `–${dateLabel(ready.max)}`}</span><small>{fulfillmentMethod === "delivery" && !ready.deliveryIncluded ? "Delivery transit time will be confirmed by the shop. " : ""}This is an estimate from today; the shop will confirm timing after reviewing your order. Business days exclude weekends.</small></> : <span>Timing will be confirmed by the shop after you place your order.</span>}</div>
     <label className="studio-order-confirm"><input type="checkbox" required />I confirm the design, quantity, and total shown above. I understand payment will be arranged with the shop.</label>
     {error && <p className="studio-order-error" role="alert">{error}</p>}
     <button type="submit" disabled={submitting}>{submitting ? "Placing order…" : `Place order · ${money(price.totalCents)}`}</button>

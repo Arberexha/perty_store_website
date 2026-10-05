@@ -18,10 +18,10 @@ test("customer places a designed order at the server calculated total", async ({
   const email = `order-test-${suffix}@example.invalid`;
   let orderId: string | undefined;
   try {
-    await pool.query("INSERT INTO products (id,category_id,name,slug,description,design_template,status,ordering_enabled,minimum_quantity) VALUES ($1,'category-apparel',$2,$3,'Test shirt','shirts','published',true,2)", [productId, `Order test shirt ${suffix}`, slug]);
+    await pool.query("INSERT INTO products (id,category_id,name,slug,description,design_template,status,ordering_enabled,minimum_quantity,production_min_days,production_max_days) VALUES ($1,'category-apparel',$2,$3,'Test shirt','shirts','published',true,2,3,5)", [productId, `Order test shirt ${suffix}`, slug]);
     await pool.query("INSERT INTO product_variants (id,product_id,sku,label,base_price_cents) VALUES ($1,$2,$3,'Medium',2000)", [variantId, productId, `ORDER-${suffix}`]);
     await pool.query("INSERT INTO quantity_price_tiers (id,variant_id,minimum_quantity,unit_price_cents) VALUES ($1,$2,3,1800)", [randomUUID(), variantId]);
-    await pool.query("INSERT INTO shipping_zones (id,name,description,fee_cents) VALUES ($1,$2,'Test area',500)", [zoneId, `Test zone ${suffix}`]);
+    await pool.query("INSERT INTO shipping_zones (id,name,description,fee_cents,transit_min_days,transit_max_days) VALUES ($1,$2,'Test area',500,1,2)", [zoneId, `Test zone ${suffix}`]);
     await page.goto(`/design/${slug}`);
     await expect(page.getByRole("heading", { name: "Place your order." })).toBeVisible();
     await page.getByRole("button", { name: "Add text", exact: true }).click();
@@ -45,6 +45,10 @@ test("customer places a designed order at the server calculated total", async ({
     await page.unroute("**/api/orders");
     await page.getByRole("button", { name: "Place order · €59.00" }).click();
     await expect(page.getByText("Order placed")).toBeVisible();
+    const banner = page.locator(".order-announcement");
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("Estimated to arrive");
+    await expect(banner).toContainText(/Order #[0-9a-f]{8} placed/);
     const trackingLink = page.getByRole("link", { name: "Track your order" });
     await expect(trackingLink).toBeVisible();
     const saved = await pool.query<{ id: string; total_cents: number; subtotal_cents: number; shipping_cents: number; status: string; confirmation_email_status: string; payment_count: number; preview_size: number; unit_price_cents: number; quantity: number }>(`SELECT o.id,o.total_cents,o.subtotal_cents,o.shipping_cents,o.status,o.confirmation_email_status,
@@ -56,13 +60,14 @@ test("customer places a designed order at the server calculated total", async ({
     expect(saved.rows[0].preview_size).toBeGreaterThan(100);
     orderId = saved.rows[0].id;
     await trackingLink.click();
+    await expect(page.locator(".order-announcement")).toContainText("Estimated to arrive");
     await expect(page.getByRole("heading", { name: "Your order, at a glance." })).toBeVisible();
     await expect(page.getByText("Order received")).toHaveCount(2);
     expect((await request.get(`/admin/orders/${orderId}/items/${(await pool.query<{ id: string }>("SELECT id FROM order_items WHERE order_id=$1", [orderId])).rows[0].id}/preview`)).status()).toBe(403);
 
     await pool.query("INSERT INTO users (id,email,password_hash,name,role) VALUES ($1,$2,'temporary-test-account','Test admin','admin')", [userId, `order-admin-${suffix}@example.invalid`]);
     await pool.query("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,now() + interval '10 minutes')", [tokenHash, userId]);
-    await page.context().addCookies([{ name: "perty_session", value: token, url: "http://127.0.0.1:3000" }]);
+    await page.context().addCookies([{ name: "perty_session", value: token, url: new URL(page.url()).origin }]);
     await page.goto(`/admin/orders/${orderId}`);
     await expect(page.getByRole("heading", { name: `Order #${orderId.slice(0, 8)}` })).toBeVisible();
     await expect(page.getByText("123 Test Street, Test City")).toBeVisible();

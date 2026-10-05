@@ -10,6 +10,8 @@ import { sendOrderConfirmation } from "@/lib/email/order-confirmation";
 import type { OrderConfirmation } from "@/lib/email/order-confirmation";
 import { orderTotal } from "@/lib/order-pricing";
 import type { PriceTier } from "@/lib/order-pricing";
+import { orderReadyEstimate } from "@/lib/ready-estimate";
+import type { OrderReadyEstimate } from "@/lib/ready-estimate";
 import { trackingPath, trackingUrl } from "@/lib/order-tracking";
 
 const MAX_BODY_BYTES = 8_000_000;
@@ -39,11 +41,12 @@ export async function POST(request: NextRequest) {
   const id = randomUUID();
   let confirmation: OrderConfirmation;
   let trackingToken = "";
+  let readyEstimate: OrderReadyEstimate | null = null;
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
-    const productResult = await client.query<{ id: string; name: string; design_template: string; status: string; ordering_enabled: boolean; age_restricted: boolean; category_restricted: boolean; minimum_quantity: number; photo_mockup: boolean }>(
-      `SELECT p.id,p.name,p.design_template,p.status,p.ordering_enabled,p.age_restricted,c.age_restricted AS category_restricted,p.minimum_quantity,(p.mockup_image IS NOT NULL) AS photo_mockup
+    const productResult = await client.query<{ id: string; name: string; design_template: string; status: string; ordering_enabled: boolean; age_restricted: boolean; category_restricted: boolean; minimum_quantity: number; photo_mockup: boolean; production_min_days: number | null; production_max_days: number | null; bulk_threshold: number | null; bulk_extra_days: number | null }>(
+      `SELECT p.id,p.name,p.design_template,p.status,p.ordering_enabled,p.age_restricted,c.age_restricted AS category_restricted,p.minimum_quantity,p.production_min_days,p.production_max_days,p.bulk_threshold,p.bulk_extra_days,(p.mockup_image IS NOT NULL) AS photo_mockup
        FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=$1 FOR SHARE OF p`, [input.catalogProductId],
     );
     const product = productResult.rows[0];
@@ -64,6 +67,7 @@ export async function POST(request: NextRequest) {
     let shippingZoneId: string | null = null;
     let shippingAddress: string | null = null;
     let shippingCents = 0;
+    let transit: { min: number | null; max: number | null } | null = null;
     let fulfillmentDetail = "Arrange pickup with the shop";
     if (input.fulfillmentMethod === "pickup") {
       if (input.pickupLocationId) {
@@ -73,17 +77,20 @@ export async function POST(request: NextRequest) {
         fulfillmentDetail = `${pickup.rows[0].name}, ${pickup.rows[0].address}${pickup.rows[0].opening_hours ? ` (${pickup.rows[0].opening_hours})` : ""}`;
       }
     } else {
-      const zone = await client.query<{ name: string; fee_cents: number }>("SELECT name,fee_cents FROM shipping_zones WHERE id=$1 AND active=true FOR SHARE", [input.shippingZoneId]);
+      const zone = await client.query<{ name: string; fee_cents: number; transit_min_days: number | null; transit_max_days: number | null }>("SELECT name,fee_cents,transit_min_days,transit_max_days FROM shipping_zones WHERE id=$1 AND active=true FOR SHARE", [input.shippingZoneId]);
       if (!zone.rows[0]) throw new OrderError("Delivery zone is no longer available");
       shippingZoneId = input.shippingZoneId;
       shippingAddress = input.shippingAddress;
       shippingCents = zone.rows[0].fee_cents;
+      transit = { min: zone.rows[0].transit_min_days, max: zone.rows[0].transit_max_days };
       fulfillmentDetail = `${input.shippingAddress} (${zone.rows[0].name})`;
     }
 
     const price = orderTotal(variant.base_price_cents, tiers.rows, input.quantity, shippingCents);
     if (price.totalCents > 2_147_483_647) throw new OrderError("Order total is too large");
     if (price.totalCents !== input.expectedTotalCents) throw new OrderError("The price changed. Refresh the page and review the total before ordering.", 409);
+
+    readyEstimate = orderReadyEstimate({ productionMinDays: product.production_min_days, productionMaxDays: product.production_max_days, bulkThreshold: product.bulk_threshold, bulkExtraDays: product.bulk_extra_days }, input.quantity, input.fulfillmentMethod, transit, new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Belgrade", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()));
 
     const inserted = await client.query<{ tracking_token: string }>(`INSERT INTO orders
       (id,user_id,customer_name,customer_email,customer_phone,customer_note,fulfillment_method,pickup_location_id,shipping_address,shipping_zone_id,subtotal_cents,shipping_cents,total_cents,confirmation_email_status)
@@ -124,5 +131,5 @@ export async function POST(request: NextRequest) {
   catch (error) { console.error("Could not record order email status", { orderId: id, error }); }
   revalidatePath("/admin/orders");
   revalidatePath("/account");
-  return NextResponse.json({ id, totalCents: confirmation.totalCents, emailStatus, trackingPath: trackingPath(trackingToken) }, { status: 201 });
+  return NextResponse.json({ id, totalCents: confirmation.totalCents, emailStatus, trackingPath: trackingPath(trackingToken), readyEstimate }, { status: 201 });
 }
