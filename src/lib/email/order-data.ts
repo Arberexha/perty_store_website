@@ -8,7 +8,7 @@ type OrderEmailRow = {
   fulfillment_method: "pickup" | "delivery"; shipping_address: string | null;
   pickup_name: string | null; pickup_address: string | null; pickup_hours: string | null;
   zone_name: string | null; subtotal_cents: number; shipping_cents: number; total_cents: number;
-  product_name: string; variant_label: string; quantity: number; unit_price_cents: number;
+  product_name: string; variant_label: string; quantity: number; unit_price_cents: number; line_total_cents: number;
   design_data: { productColor?: string; personalizations?: OrderConfirmation["personalizations"] } | null;
   preview_png: Buffer | null;
 };
@@ -17,10 +17,10 @@ export async function loadOrderEmailDetails(id: string): Promise<OrderConfirmati
   const result = await getPool().query<OrderEmailRow>(`SELECT o.id,o.tracking_token,o.customer_name,o.customer_email,o.customer_note,o.fulfillment_method,o.shipping_address,
     o.subtotal_cents,o.shipping_cents,o.total_cents,
     l.name AS pickup_name,l.address AS pickup_address,l.opening_hours AS pickup_hours,z.name AS zone_name,
-    i.product_name,i.variant_label,i.quantity,i.unit_price_cents,i.design_data,i.preview_png
-    FROM orders o JOIN LATERAL (SELECT * FROM order_items WHERE order_id=o.id ORDER BY id LIMIT 1) i ON true
+    i.product_name,i.variant_label,i.quantity,i.unit_price_cents,i.line_total_cents,i.design_data,i.preview_png
+    FROM orders o JOIN order_items i ON i.order_id=o.id
     LEFT JOIN pickup_locations l ON l.id=o.pickup_location_id
-    LEFT JOIN shipping_zones z ON z.id=o.shipping_zone_id WHERE o.id=$1`, [id]);
+    LEFT JOIN shipping_zones z ON z.id=o.shipping_zone_id WHERE o.id=$1 ORDER BY i.id`, [id]);
   const row = result.rows[0];
   if (!row) return null;
   const fulfillmentDetail = row.fulfillment_method === "delivery"
@@ -35,5 +35,8 @@ export async function loadOrderEmailDetails(id: string): Promise<OrderConfirmati
     customerNote: row.customer_note, productColor: row.design_data?.productColor ?? "—",
     personalizations: Array.isArray(row.design_data?.personalizations) ? row.design_data.personalizations : [],
     previewPng: row.preview_png, trackingUrl: trackingUrl(row.tracking_token),
+    items: result.rows.map((item) => ({ productName: item.product_name, variantLabel: item.variant_label, quantity: item.quantity,
+      unitPriceCents: item.unit_price_cents, lineTotalCents: item.line_total_cents,
+      productColor: item.design_data?.productColor ?? "—", personalizations: Array.isArray(item.design_data?.personalizations) ? item.design_data.personalizations : [], previewPng: item.preview_png })),
   };
 }

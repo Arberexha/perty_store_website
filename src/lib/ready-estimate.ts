@@ -44,3 +44,25 @@ export function orderReadyEstimate(timing: ReadyTiming, quantity: number, fulfil
     kind: fulfillment === "pickup" ? "pickup" : range.deliveryIncluded ? "delivery" : "production",
   };
 }
+
+export function combinedReadyDayRange(items: Array<{ timing: ReadyTiming; quantity: number }>, fulfillment: "pickup" | "delivery", transit: { min: number | null; max: number | null } | null) {
+  if (!items.length) return null;
+  const ranges = items.map((item) => readyDayRange(item.timing, item.quantity, null));
+  if (ranges.some((range) => !range)) return null;
+  const productionMin = Math.max(...ranges.map((range) => range!.min));
+  const productionMax = Math.max(...ranges.map((range) => range!.max));
+  const deliveryIncluded = fulfillment === "delivery" && transit?.min !== null && transit?.max !== null && transit !== null;
+  return { min: productionMin + (deliveryIncluded ? transit.min! : 0), max: productionMax + (deliveryIncluded ? transit.max! : 0), deliveryIncluded };
+}
+
+export function combinedOrderReadyEstimate(items: Array<{ timing: ReadyTiming; quantity: number }>, fulfillment: "pickup" | "delivery", transit: { min: number | null; max: number | null } | null, orderDate: string): OrderReadyEstimate | null {
+  const range = combinedReadyDayRange(items, fulfillment, transit);
+  if (!range) return null;
+  const [year, month, day] = orderDate.split("-").map(Number);
+  const start = new Date(year, month - 1, day);
+  return {
+    minDate: localDateString(addBusinessDays(start, range.min)),
+    maxDate: localDateString(addBusinessDays(start, range.max)),
+    kind: fulfillment === "pickup" ? "pickup" : range.deliveryIncluded ? "delivery" : "production",
+  };
+}

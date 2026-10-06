@@ -1,6 +1,7 @@
 node_modules/
 .npm-cache/
 .next/
+.next-e2e/
 .env
 .env.local
 .env.*.local

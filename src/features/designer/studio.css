@@ -20,6 +20,7 @@
 .studio-ready-estimate span{font-size:20px;font-weight:700}
 .studio-ready-estimate small{line-height:1.5;color:#496352}
 .studio-reorder-notice{margin:0;padding:14px 16px;border:1px solid #cbd9c5;background:#f1f6ed;color:#29472d;font-size:13px;line-height:1.55}
+.studio-cart-action{display:flex;align-items:center;flex-wrap:wrap;gap:10px 15px;padding:12px 0}.studio-cart-action button{border:1px solid #254536;background:#fff;color:#254536;padding:12px 18px;border-radius:8px;font-weight:800;cursor:pointer}.studio-cart-action a{font-weight:800;text-decoration:underline}.studio-cart-action small{flex-basis:100%;color:#566b5d}
 .studio-order-totals span:nth-last-child(2),.studio-order-totals strong:last-child{padding-top:10px;border-top:1px solid var(--line);font-size:17px}
 .studio-order-form .studio-order-confirm{flex-direction:row;align-items:flex-start;gap:10px;font-weight:400;line-height:1.4}
 .studio-order-confirm input{width:auto;margin:2px 0 0;flex:none}

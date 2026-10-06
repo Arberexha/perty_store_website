@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addBusinessDays, orderReadyEstimate, readyDayRange } from "./ready-estimate";
+import { addBusinessDays, combinedOrderReadyEstimate, orderReadyEstimate, readyDayRange } from "./ready-estimate";
 
 const timing = { productionMinDays: 3, productionMaxDays: 5, bulkThreshold: 50, bulkExtraDays: 2 };
 
@@ -21,5 +21,12 @@ describe("ready estimates", () => {
   it("returns an arrival range for a completed delivery order", () => {
     expect(orderReadyEstimate(timing, 50, "delivery", { min: 1, max: 2 }, "2026-10-05")).toEqual({ minDate: "2026-10-13", maxDate: "2026-10-16", kind: "delivery" });
     expect(orderReadyEstimate(timing, 10, "delivery", null, "2026-10-05")?.kind).toBe("production");
+  });
+
+  it("uses the slowest cart item and adds transit once", () => {
+    expect(combinedOrderReadyEstimate([
+      { timing, quantity: 1 },
+      { timing: { ...timing, productionMinDays: 5, productionMaxDays: 7 }, quantity: 1 },
+    ], "delivery", { min: 1, max: 2 }, "2026-10-05")).toEqual({ minDate: "2026-10-13", maxDate: "2026-10-16", kind: "delivery" });
   });
 });

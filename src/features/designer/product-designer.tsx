@@ -11,6 +11,7 @@ import type { ReadyTiming } from "@/lib/ready-estimate";
 import type { OrderReadyEstimate } from "@/lib/ready-estimate";
 import { ORDER_ANNOUNCEMENT_EVENT, ORDER_ANNOUNCEMENT_KEY } from "@/lib/order-announcement";
 import type { OrderAnnouncement } from "@/lib/order-announcement";
+import { addCartItem } from "@/lib/cart";
 import type { OrderDetails } from "./order-checkout";
 import { removePlainBackground } from "@/lib/remove-plain-background";
 import { DEFAULT_PRINT_AREA } from "@/lib/product-mockup";
@@ -66,6 +67,8 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   const [saveError, setSaveError] = useState<string | null>(null);
   const [message, setMessage] = useState(`Move a design directly on the ${config.singular} with your finger or mouse.`);
   const [submitting, setSubmitting] = useState(false);
+  const [addingToCart, setAddingToCart] = useState(false);
+  const [addedToCart, setAddedToCart] = useState(false);
   const [submittedId, setSubmittedId] = useState<string | null>(null);
   const [placedId, setPlacedId] = useState<string | null>(null);
   const [orderTrackingPath, setOrderTrackingPath] = useState<string | null>(null);
@@ -566,6 +569,28 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     finally { setSubmitting(false); }
   }
 
+  async function addDesignToCart(variantId: string, quantity: number) {
+    if (addingToCart || submitting || !canOrder) return;
+    setSubmitError(null);
+    setAddedToCart(false);
+    if (!layers.length || layers.some((layer) => layer.kind === "text" && !layer.text.trim())) { setSubmitError("Add a design and make sure text layers are not empty before adding it to the cart."); return; }
+    if (layers.some((layer) => layer.kind === "image" && !imagesRef.current.get(layer.src)?.naturalWidth)) { setSubmitError("Wait for your uploaded image to finish loading, then try again."); return; }
+    if (personalizations.length && personalizations.length !== quantity) { setSubmitError("Quantity must match the number of personalized shirts."); return; }
+    setAddingToCart(true);
+    try {
+      const preview = await createRequestPreview();
+      if (!preview) throw new Error("The preview could not be created. Please try again.");
+      await addCartItem({ id: crypto.randomUUID(), product, catalogProductId, productName: catalogName, productSlug: catalogProducts.find((item) => item.id === catalogProductId)?.slug ?? "", variantId, quantity, productColor, layers,
+        personalizations: product === "shirts" ? personalizations : undefined,
+        previewSide: product === "shirts" ? preview.side : undefined,
+        previewHeight: product === "shirts" ? preview.height : undefined,
+        productColors: [...new Set([productColor, ...colorVariants])], previewPng: preview.png, addedAt: Date.now() });
+      setAddedToCart(true);
+      setMessage("Design added to your cart. You can keep designing or check out all items together.");
+    } catch (error) { setSubmitError(error instanceof Error ? error.message : "Could not add this design to the cart."); }
+    finally { setAddingToCart(false); }
+  }
+
   function resetDesign() {
     rememberChange();
     setLayers([]);
@@ -644,7 +669,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
               {([
                 ...(!customPhoto ? [["product", "◉", "Product color"]] as const : []), ["text", "T", "Add text"], ["upload", "↑", "Upload"],
                 ["art", "✦", "Add art"], ...(product === "shirts" && !customPhoto ? [["personalize", "#", "Names & numbers"]] as const : []), ["layers", "☷", "Layers"],
-              ] as const).map(([id, icon, label]) => <button type="button" key={id} aria-pressed={shirtTool === id} onClick={() => setShirtTool(id)}><span aria-hidden="true">{icon}</span>{label}</button>)}
+              ] as const).map(([id, icon, label]) => <button type="button" key={id} disabled={!loaded} aria-pressed={shirtTool === id} onClick={() => setShirtTool(id)}><span aria-hidden="true">{icon}</span>{label}</button>)}
             </div>
             <div className="shirt-tool-panel">
               {shirtTool === "product" && !customPhoto && <section><h3>Product color</h3><p>Choose a {config.singular} color and preview your design immediately.</p><div className="color-options">{productColors.map((color) => <button type="button" key={color.value} className={productColor === color.value ? "color-swatch active" : "color-swatch"} style={{ backgroundColor: color.value }} aria-label={color.name} aria-pressed={productColor === color.value} title={color.name} onClick={() => { rememberChange(); setProductColor(color.value); }} />)}</div><label className="custom-product-color">Custom {config.singular} color<input type="color" value={productColor} onPointerDown={rememberChange} onChange={(event) => setProductColor(event.target.value)} /></label><span className="tool-hint">{productColors.find((color) => color.value === productColor)?.name ?? productColor.toUpperCase()}</span>{canRequest && !canOrder && <><button className="shirt-secondary-action" type="button" onClick={() => { if (!colorVariants.includes(productColor) && colorVariants.length < 12) { rememberChange(); setColorVariants((current) => [...current, productColor]); } }}>+ Add this color to request</button>{colorVariants.length > 0 && <div className="shirt-color-variants">{colorVariants.map((color) => <button key={color} type="button" title={`Remove ${color}`} onClick={() => { rememberChange(); setColorVariants((current) => current.filter((item) => item !== color)); }}><i style={{ backgroundColor: color }} />{productColors.find((item) => item.value === color)?.name ?? color} ×</button>)}</div>}</>}</section>}
@@ -663,7 +688,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
         </div>
         {canRequest && <section className="studio-order-request" id="send-design" aria-labelledby="send-design-title">
           <div><span className="store-kicker">WHEN YOUR DESIGN IS READY</span><h2 id="send-design-title">{reorderOrderId ? "Order again." : canOrder ? "Place your order." : "Send it to our team."}</h2><p>{reorderOrderId ? "Your previous artwork and choices are loaded. Review the design, current price, quantity, and pickup or delivery before placing a new unpaid order." : canOrder ? "Choose your product option, quantity, and pickup or delivery. Review the total before placing an unpaid order. The shop will contact you about payment and fulfillment." : "We will review your design and contact you to confirm options, price, and delivery or pickup. Sending this request does not place a paid order."}</p></div>
-          {reorderOrderId && !loaded ? <p role="status">Opening your previous order…</p> : reorderError ? <p className="studio-order-error" role="alert">{reorderError} <Link href="/account">Return to My account</Link></p> : canOrder && orderOptions ? <OrderCheckout options={orderOptions} minimumQuantity={minimumQuantity} timing={readyTiming} orderDate={orderDate} customer={customer} initialOrder={reorderDraft?.checkout ?? null} submitting={submitting} error={submitError} placedId={placedId} trackingPath={orderTrackingPath} emailStatus={orderEmailStatus} onPlace={placeOrder} /> : submittedId ? <div className="studio-order-success" role="status"><strong>Design request sent</strong><p>Reference <code>#{submittedId.slice(0, 8)}</code>. Our team can now see your design in the admin panel and will contact you using the email provided.</p><button type="button" onClick={() => { setSubmittedId(null); setSubmitError(null); }}>Send another request</button></div> : <form onSubmit={submitDesign} className="studio-order-form">
+          {reorderOrderId && !loaded ? <p role="status">Opening your previous order…</p> : reorderError ? <p className="studio-order-error" role="alert">{reorderError} <Link href="/account">Return to My account</Link></p> : canOrder && orderOptions ? <OrderCheckout options={orderOptions} minimumQuantity={minimumQuantity} timing={readyTiming} orderDate={orderDate} customer={customer} initialOrder={reorderDraft?.checkout ?? null} submitting={submitting} addingToCart={addingToCart} addedToCart={addedToCart} error={submitError} placedId={placedId} trackingPath={orderTrackingPath} emailStatus={orderEmailStatus} onPlace={placeOrder} onAddToCart={addDesignToCart} /> : submittedId ? <div className="studio-order-success" role="status"><strong>Design request sent</strong><p>Reference <code>#{submittedId.slice(0, 8)}</code>. Our team can now see your design in the admin panel and will contact you using the email provided.</p><button type="button" onClick={() => { setSubmittedId(null); setSubmitError(null); }}>Send another request</button></div> : <form onSubmit={submitDesign} className="studio-order-form">
             <div className="studio-order-fields"><label>Your name<input name="customer_name" type="text" autoComplete="name" required minLength={2} maxLength={120} /></label><label>Email address<input name="customer_email" type="email" autoComplete="email" required maxLength={254} /></label><label>Phone (optional)<input name="customer_phone" type="tel" autoComplete="tel" maxLength={40} /></label><label>Quantity<input name="quantity" type="number" min={1} max={1000} defaultValue={1} required /></label></div>
             <label>Notes for the team<textarea name="notes" rows={3} maxLength={2000} placeholder="Sizes, deadline, delivery area, or anything else we should know" /></label>
             {submitError && <p className="studio-order-error" role="alert">{submitError}</p>}

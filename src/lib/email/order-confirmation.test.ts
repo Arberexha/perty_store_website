@@ -41,6 +41,26 @@ describe("order confirmation email", () => {
     expect(raw).toContain(order.previewPng!.toString("base64"));
   });
 
+  it("lists every cart design and attaches each preview", async () => {
+    const secondPreview = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 4, 5, 6]);
+    const cart: OrderConfirmation = { ...order, subtotalCents: 4500, totalCents: 5000, items: [
+      { productName: order.productName, variantLabel: order.variantLabel, quantity: 2, unitPriceCents: 1500, lineTotalCents: 3000, productColor: order.productColor, personalizations: order.personalizations, previewPng: order.previewPng },
+      { productName: "Custom pen", variantLabel: "Blue", quantity: 1, unitPriceCents: 1500, lineTotalCents: 1500, productColor: "#112233", personalizations: [], previewPng: secondPreview },
+    ] };
+    const message = orderConfirmationMessage(cart);
+    expect(message.text).toContain("Custom hat");
+    expect(message.text).toContain("Custom pen");
+    expect(message.text).toContain("Delivery: €5.00");
+    expect(message.text).toContain("Total: €50.00");
+    expect(orderStatusMessage(cart, "ready").text).toContain("Custom pen");
+    expect(orderCancellationMessage(cart).text).toContain("Custom pen");
+    const info = await nodemailer.createTransport({ streamTransport: true, buffer: true }).sendMail(orderConfirmationMail(cart, "orders@example.test"));
+    const raw = info.message.toString();
+    expect(raw).toContain("Content-ID: <order-design-preview>");
+    expect(raw).toContain("Content-ID: <order-design-preview-1>");
+    expect(raw).toContain(secondPreview.toString("base64"));
+  });
+
   it("builds a cancellation email with the reference and preview but no internal note", async () => {
     const message = orderCancellationMessage({ ...order, customerName: "Alex <Customer>" });
     expect(message.subject).toContain("cancelled #12345678");

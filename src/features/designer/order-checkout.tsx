@@ -17,9 +17,9 @@ export type OrderDetails = {
 
 const money = (cents: number) => new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR" }).format(cents / 100);
 
-export default function OrderCheckout({ options, minimumQuantity, timing, orderDate, customer, initialOrder, submitting, error, placedId, trackingPath, emailStatus, onPlace }: {
+export default function OrderCheckout({ options, minimumQuantity, timing, orderDate, customer, initialOrder, submitting, addingToCart, addedToCart, error, placedId, trackingPath, emailStatus, onPlace, onAddToCart }: {
   options: OrderOptions; minimumQuantity: number; timing: ReadyTiming; orderDate: string; customer: { name: string; email: string } | null; initialOrder: ReorderCheckout | null;
-  submitting: boolean; error: string | null; placedId: string | null; trackingPath: string | null; emailStatus: "sent" | "failed" | "not_configured" | null; onPlace: (details: OrderDetails) => Promise<void>;
+  submitting: boolean; addingToCart: boolean; addedToCart: boolean; error: string | null; placedId: string | null; trackingPath: string | null; emailStatus: "sent" | "failed" | "not_configured" | null; onPlace: (details: OrderDetails) => Promise<void>; onAddToCart: (variantId: string, quantity: number) => Promise<void>;
 }) {
   const originalVariantAvailable = !initialOrder?.variantId || options.variants.some((item) => item.id === initialOrder.variantId);
   const originalPickupAvailable = !initialOrder?.pickupLocationId || options.pickup.some((item) => item.id === initialOrder.pickupLocationId);
@@ -70,6 +70,7 @@ export default function OrderCheckout({ options, minimumQuantity, timing, orderD
     <label>Notes for the team<textarea name="notes" rows={3} maxLength={2000} defaultValue={initialOrder?.notes ?? ""} placeholder="Size details, deadline, or other instructions" /></label>
     <div className="studio-order-totals"><span>{quantity} × {money(price.unitPriceCents)}</span><strong>{money(price.subtotalCents)}</strong><span>{fulfillmentMethod === "delivery" ? "Delivery" : "Pickup"}</span><strong>{money(price.shippingCents)}</strong><span>Total</span><strong>{money(price.totalCents)}</strong></div>
     <div className="studio-ready-estimate" aria-live="polite"><strong>{fulfillmentMethod === "pickup" ? "Estimated ready for pickup" : ready?.deliveryIncluded ? "Estimated delivery" : "Estimated production ready"}</strong>{ready ? <><span>{dateLabel(ready.min)}{ready.max === ready.min ? "" : `–${dateLabel(ready.max)}`}</span><small>{fulfillmentMethod === "delivery" && !ready.deliveryIncluded ? "Delivery transit time will be confirmed by the shop. " : ""}This is an estimate from today; the shop will confirm timing after reviewing your order. Business days exclude weekends.</small></> : <span>Timing will be confirmed by the shop after you place your order.</span>}</div>
+    <div className="studio-cart-action"><button type="button" disabled={addingToCart || submitting || !variant || quantity < minimumQuantity || quantity > 1000} onClick={() => void onAddToCart(variant.id, quantity)}>{addingToCart ? "Adding design…" : "Add design to cart"}</button>{addedToCart && <Link href="/cart">View cart →</Link>}<small>Combine up to five designs into one order with one delivery choice.</small></div>
     <label className="studio-order-confirm"><input type="checkbox" required />I confirm the design, quantity, and total shown above. I understand payment will be arranged with the shop.</label>
     {error && <p className="studio-order-error" role="alert">{error}</p>}
     <button type="submit" disabled={submitting}>{submitting ? "Placing order…" : `Place order · ${money(price.totalCents)}`}</button>

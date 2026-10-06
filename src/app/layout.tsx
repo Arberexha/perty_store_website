@@ -35,6 +35,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <Link href="/#faq">FAQs</Link>
           </nav>
           <div className="header-actions">
+            <Link className="account-link" href="/cart">Cart</Link>
             {user && <><QuoteNotificationRefresh /><QuoteNotifications notifications={unread?.rows ?? []} count={unread?.rows[0]?.unread_count ?? 0} /></>}
             {user ? <Link className="account-link" href="/account">My account</Link> : <Link className="account-link" href="/login">Sign in</Link>}
             <Link className="header-design-link" href="/#shop-categories">Start designing <span aria-hidden="true">↗</span></Link>
