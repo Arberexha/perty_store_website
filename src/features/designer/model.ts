@@ -53,7 +53,3 @@ export function printArea(product: Product, side: ShirtSide) {
   if (side === "back") return { left: 390, top: 95, right: 610, bottom: 325 };
   return products.shirts.print;
 }
-
-export const initialLayers: Layer[] = [
-  { id: "starter", kind: "text", text: "YOUR IDEA", color: "#183c30", font: "Arial", x: 490, y: 210, scale: 1, rotation: 0 },
-];

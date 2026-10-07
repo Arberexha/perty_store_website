@@ -14,13 +14,11 @@ import type { OrderAnnouncement } from "@/lib/order-announcement";
 import { addCartItem } from "@/lib/cart";
 import type { OrderDetails } from "./order-checkout";
 import { removePlainBackground } from "@/lib/remove-plain-background";
-import { HEIGHT, WIDTH, artIcons, initialLayers, photoSources, printArea, products, shirtSides } from "./model";
+import { HEIGHT, WIDTH, artIcons, photoSources, printArea, products, shirtSides } from "./model";
 import type { DragState, DraftSnapshot, Layer, Personalization, Product, ShirtSide, ShirtTool, TextLayer } from "./model";
 import { canvasPoint, hitLayer, loadImage, loadProductPhoto, render } from "./canvas";
 import { starterTemplates, templateLayers } from "./templates";
 import type { StarterTemplate } from "./templates";
-
-const legacyProductIds: Record<Product, string> = { pens: "product-pen", shirts: "product-tshirt", hats: "product-hat", lighters: "product-lighter" };
 
 export default function ProductDesigner({ product, catalogProductId, catalogName, catalogAgeRestricted, catalogImageUrl, catalogProducts, orderOptions, minimumQuantity, readyTiming, orderDate, customer, savedDesignId, reorderOrderId }: { product: Product; catalogProductId: string; catalogName: string; catalogAgeRestricted: boolean; catalogImageUrl: string | null; catalogProducts: { id: string; name: string; slug: string; design_template: Product; age_restricted: boolean }[]; orderOptions: OrderOptions | null; minimumQuantity: number; readyTiming: ReadyTiming; orderDate: string; customer: { name: string; email: string } | null; savedDesignId: string | null; reorderOrderId: string | null }) {
   const config = products[product];
@@ -37,7 +35,6 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   const [colorVariants, setColorVariants] = useState<string[]>([]);
   const PRINT = printArea(product, shirtSide);
   const productColors = config.colors;
-  const STORAGE_KEY = `perty-${catalogProductId}-design-v1`;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inlineTextRef = useRef<HTMLInputElement>(null);
   const shirtUploadRef = useRef<HTMLInputElement>(null);
@@ -52,8 +49,8 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [productColor, setProductColor] = useState(config.colors[0].value);
-  const [layers, setLayers] = useState<Layer[]>(() => product === "shirts" ? [] : initialLayers.map((layer) => ({ ...layer, font: "PertySharpSans", color: "#000000", x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: product === "lighters" ? .52 : product === "hats" ? .75 : product === "pens" ? .65 : 1 })));
-  const [selectedId, setSelectedId] = useState<string | null>(product === "shirts" ? null : "starter");
+  const [layers, setLayers] = useState<Layer[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [reorderDraft, setReorderDraft] = useState<ReorderDraft | null>(null);
   const [reorderError, setReorderError] = useState<string | null>(null);
@@ -132,8 +129,6 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
           saved = JSON.stringify(result.design);
           setDesignName(result.name ?? `My ${catalogName} design`);
           setAccountDesignId(result.id ?? null);
-        } else {
-          saved = localStorage.getItem(STORAGE_KEY) ?? (catalogProductId === legacyProductIds[product] ? localStorage.getItem(`perty-${product}-design-v1`) : null);
         }
         if (saved) {
           const draft = JSON.parse(saved) as { productColor?: string; pencilColor?: string; layers?: Layer[]; shirtSide?: ShirtSide; personalizations?: Personalization[]; colorVariants?: string[] };
@@ -156,13 +151,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     }
     void loadDraft();
     return () => { active = false; };
-  }, [STORAGE_KEY, catalogProductId, catalogName, product, customPhoto, savedDesignId, reorderOrderId]);
-
-  useEffect(() => {
-    if (!loaded || reorderOrderId) return;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ productColor, layers, shirtSide, personalizations, colorVariants })); }
-    catch { queueMicrotask(() => setMessage("This browser could not save the draft. Download a preview to keep a copy.")); }
-  }, [loaded, productColor, layers, shirtSide, personalizations, colorVariants, STORAGE_KEY, reorderOrderId]);
+  }, [catalogProductId, catalogName, product, customPhoto, savedDesignId, reorderOrderId]);
 
   useEffect(() => {
     let active = true;
@@ -670,7 +659,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
             </div>
             <div className="studio-view-controls"><label>Zoom <strong>{Math.round(zoom * 100)}%</strong><input type="range" min="0.7" max="1.7" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label><button type="button" onClick={() => setZoom(1)}>Reset zoom</button></div>
             <div className="studio-preview-footer"><span>Click text to edit it on the product, or drag to move it.{product === "shirts" && !customPhoto ? ` ${shirtSides.find((side) => side.id === shirtSide)?.label} · ${visibleLayers.length} layers.` : ""}</span><div className="studio-preview-actions">{customer ? <button type="button" disabled={!loaded} onClick={() => { setSaveError(null); setSaveOpen((open) => !open); }}>{accountDesignId ? "Save changes" : "Save design"}</button> : <Link href="/login">Sign in to save</Link>}<button type="button" onClick={sharePreview}>Share preview</button><button type="button" onClick={downloadPreview}>Download PNG</button>{canRequest && <a href="#send-design">{canOrder ? "Place order →" : "Get a quote →"}</a>}</div></div>
-            {saveOpen && customer && <form className="studio-save-panel" onSubmit={saveToAccount}><div><label htmlFor="studio-design-name">Design name</label><input id="studio-design-name" value={designName} maxLength={120} required onChange={(event) => setDesignName(event.target.value)} placeholder="Name your design" /></div><button type="submit" disabled={saving || !loaded}>{saving ? "Saving…" : accountDesignId ? "Save changes" : "Save to My designs"}</button><Link href="/account">My designs →</Link>{saveError && <p role="alert">{saveError}</p>}</form>}
+            {saveOpen && customer && <form className="studio-save-panel" onSubmit={saveToAccount}><div><label htmlFor="studio-design-name">Design name</label><input id="studio-design-name" value={designName} maxLength={120} required onChange={(event) => setDesignName(event.target.value)} placeholder="Name your design" /></div><button type="submit" disabled={saving || !loaded || !photoReady}>{saving ? "Saving…" : accountDesignId ? "Save changes" : "Save to My designs"}</button><Link href="/account">My designs →</Link>{saveError && <p role="alert">{saveError}</p>}</form>}
           </section>
           <aside className="studio-shirt-tools" aria-label={`${catalogName} design tools`}>
             <div className="shirt-tools-heading"><span>DESIGN LAB</span><h2>Make it yours.</h2><p>{customPhoto ? "Place text and artwork anywhere on this product photo." : product === "shirts" ? "Design the front and back of your T-shirt." : `Add a name, logo, or artwork to your ${config.singular}.`}</p></div>
@@ -705,7 +694,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
             <button type="submit" disabled={submitting}>{submitting ? "Sending design…" : "Send design request"}</button>
           </form>}
         </section>}
-        <p className="studio-message" role="status">{message}</p><p className="studio-disclaimer">{reorderOrderId ? "Save the design to My designs if you want to keep your changes for later." : "Your draft is kept in this browser. Sign in and save it to My designs to continue on another device."} {canOrder ? "Orders are placed without online payment. The shop will contact you about payment and fulfillment." : canRequest ? "Design requests are reviewed by staff before price, production, or delivery is confirmed." : "This 18+ product cannot be ordered online."}</p>
+        <p className="studio-message" role="status">{message}</p><p className="studio-disclaimer">Save the design to My designs if you want to keep your changes for later. {canOrder ? "Orders are placed without online payment. The shop will contact you about payment and fulfillment." : canRequest ? "Design requests are reviewed by staff before price, production, or delivery is confirmed." : "This 18+ product cannot be ordered online."}</p>
       </div>
     </main>
   );

@@ -4,7 +4,7 @@ test("visitors can open the product designers", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: /your design/i })).toBeVisible();
 
-  await page.locator(".pc-category-grid").getByRole("link", { name: /Custom pen/i }).click();
+  await page.getByRole("link", { name: "Design Custom pen" }).click();
   await expect(page).toHaveURL(/\/design\/custom-pen$/);
   await expect(page.getByRole("heading", { name: "Design Custom pen." })).toBeVisible();
   await expect(page.locator("canvas[aria-label*='preview']")).toBeVisible();
@@ -31,7 +31,7 @@ test("product studios show only the editable preview", async ({ page }) => {
   }
 });
 
-test("a starter template can be edited, saved as a browser draft, and undone", async ({ page }) => {
+test("a starter template can be edited and undone", async ({ page }) => {
   await page.goto("/design/custom-tshirt");
   await page.getByRole("button", { name: "Use Birthday template" }).click();
   await expect(page.locator(".studio-selection-bar strong")).toHaveText("HAPPY");
@@ -39,9 +39,6 @@ test("a starter template can be edited, saved as a browser draft, and undone", a
   const textField = page.getByRole("textbox", { name: "Text", exact: true });
   await textField.fill("MAYA");
   await expect(page.locator(".studio-selection-bar strong")).toHaveText("MAYA");
-  await page.reload();
-  await expect(page.getByRole("textbox", { name: "Text", exact: true })).toHaveValue("MAYA");
-
   await page.getByRole("button", { name: "Use Team spirit template" }).click();
   await expect(page.locator(".studio-selection-bar strong")).toHaveText("YOUR TEAM");
   await page.getByRole("button", { name: "Undo" }).click();
@@ -61,9 +58,8 @@ test("clicking shirt text edits it directly on the preview", async ({ page }) =>
   await inlineText.press("Enter");
   await expect(inlineText).toHaveCount(0);
   await expect(page.locator(".studio-selection-bar strong")).toHaveText("ORANGE 14");
-  await page.reload();
-  await expect(page.locator(".studio-selection-bar strong")).toHaveText("ORANGE 14");
 
+  const beforeDrag = await canvas.evaluate((element) => (element as HTMLCanvasElement).toDataURL());
   const dragBounds = await canvas.boundingBox();
   expect(dragBounds).not.toBeNull();
   const startX = dragBounds!.x + dragBounds!.width / 2;
@@ -73,12 +69,27 @@ test("clicking shirt text edits it directly on the preview", async ({ page }) =>
   await page.mouse.move(startX + 50, startY, { steps: 5 });
   await page.mouse.up();
   await expect(page.getByRole("textbox", { name: "Edit text on product" })).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => {
-    const key = Object.keys(localStorage).find((item) => item.endsWith("-design-v1"));
-    if (!key) return 0;
-    const draft = JSON.parse(localStorage.getItem(key) ?? "{}") as { layers?: { text?: string; x: number }[] };
-    return draft.layers?.find((layer) => layer.text === "ORANGE 14")?.x ?? 0;
-  })).toBeGreaterThan(500);
+  await expect.poll(() => canvas.evaluate((element) => (element as HTMLCanvasElement).toDataURL())).not.toBe(beforeDrag);
+});
+
+test("each product opens blank even when this browser has an older draft", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    for (const product of ["shirts", "pens", "hats", "lighters"]) {
+      localStorage.setItem(`perty-${product}-design-v1`, JSON.stringify({ layers: [{ id: "old-logo", kind: "text", text: "OLD LOGO", color: "#000000", font: "Arial", x: 500, y: 200, scale: 1, rotation: 0 }] }));
+    }
+  });
+  for (const slug of ["custom-tshirt", "custom-pen", "custom-hat", "custom-lighter"]) {
+    await page.goto(`/design/${slug}`);
+    await expect(page.locator(".studio-selection-bar")).toHaveCount(0);
+    await page.getByRole("button", { name: "Layers" }).click();
+    await expect(page.getByText("No designs on this area yet.")).toBeVisible();
+  }
+  await page.goto("/design/custom-tshirt");
+  await page.getByRole("button", { name: "Use Business tee template" }).click();
+  await expect(page.locator(".studio-selection-bar")).toBeVisible();
+  await page.reload();
+  await expect(page.locator(".studio-selection-bar")).toHaveCount(0);
 });
 
 test("template cards show their full preview text at desktop and mobile widths", async ({ page }) => {

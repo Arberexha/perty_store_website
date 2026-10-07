@@ -21,6 +21,8 @@ test("a customer saves, reopens, shares, duplicates, and deletes a design", asyn
     await pool.query("INSERT INTO products (id,category_id,name,slug,description,design_template,status) VALUES ($1,'category-accessories',$2,$3,'Test hat','hats','published')", [productId, `Saved hat ${suffix}`, slug]);
     await page.context().addCookies([{ name: "perty_session", value: token, url: baseURL }]);
     await page.goto(`/design/${slug}`);
+    await page.getByRole("button", { name: "Add text" }).click();
+    await page.getByRole("button", { name: "+ Add text" }).click();
     await page.getByRole("button", { name: "Save design" }).click();
     await page.getByRole("textbox", { name: "Design name" }).fill("Weekend hat");
     await page.getByRole("button", { name: "Save to My designs" }).click();
