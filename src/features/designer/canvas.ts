@@ -1,7 +1,6 @@
 import type { PointerEvent } from "react";
 import { HEIGHT, WIDTH, printArea } from "./model";
 import type { Layer, Product, ShirtSide, TextLayer } from "./model";
-import type { PrintArea } from "@/lib/product-mockup";
 
 function drawPen(ctx: CanvasRenderingContext2D, productColor: string, transparent = false) {
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
@@ -226,15 +225,13 @@ export function render(
   side: ShirtSide,
   productColor: string,
   layers: Layer[],
-  selectedId: string | null,
   images: Map<string, HTMLImageElement>,
-  showGuides: boolean,
   transparent = false,
   photo?: HTMLImageElement | null,
-  customArea?: PrintArea | null,
+  customPhoto = false,
 ) {
-  const PRINT = customArea ?? printArea(product, side);
-  if (customArea && photo?.complete && photo.naturalWidth) drawCustomPhoto(ctx, photo);
+  const PRINT = printArea(product, side);
+  if (customPhoto && photo?.complete && photo.naturalWidth) drawCustomPhoto(ctx, photo);
   else drawProduct(ctx, product, productColor, transparent, photo);
   const artwork = document.createElement("canvas");
   artwork.width = WIDTH;
@@ -261,14 +258,13 @@ export function render(
   const pixels = base.data;
   // Artwork can sit anywhere on the product; the photo's surface mask keeps it
   // off the backdrop, metal parts, skin and denim.
-  const surface = photo && !customArea ? tintSources.get(photo)?.alpha : undefined;
+  const surface = photo && !customPhoto ? tintSources.get(photo)?.alpha : undefined;
   const centerX = Math.round((PRINT.left + PRINT.right) / 2);
   const centerY = Math.round((PRINT.top + PRINT.bottom) / 2);
   const center = (centerY * WIDTH + centerX) * 4;
   const reference = Math.max(1, .2126 * pixels[center] + .7152 * pixels[center + 1] + .0722 * pixels[center + 2]);
   for (let i = 0; i < pixels.length; i += 4) {
     if (!print[i + 3]) continue;
-    if (customArea && ((i / 4) % WIDTH < PRINT.left || (i / 4) % WIDTH > PRINT.right || Math.floor(i / 4 / WIDTH) < PRINT.top || Math.floor(i / 4 / WIDTH) > PRINT.bottom)) continue;
     const coverage = surface ? surface[i / 4] / 255 : 1;
     if (!coverage) continue;
     const light = .2126 * pixels[i] + .7152 * pixels[i + 1] + .0722 * pixels[i + 2];
@@ -279,28 +275,6 @@ export function render(
     }
   }
   ctx.putImageData(base, 0, 0);
-  if (showGuides && customArea) {
-    ctx.save();
-    ctx.strokeStyle = "#e4572e";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8, 5]);
-    ctx.strokeRect(PRINT.left, PRINT.top, PRINT.right - PRINT.left, PRINT.bottom - PRINT.top);
-    ctx.restore();
-  }
-  if (showGuides && selectedId) {
-    const layer = layers.find((item) => item.id === selectedId);
-    if (layer) {
-      const { width, height } = layerDimensions(ctx, layer);
-      ctx.save();
-      ctx.translate(layer.x, layer.y);
-      ctx.rotate((layer.rotation * Math.PI) / 180);
-      ctx.strokeStyle = "#215a40";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 4]);
-      ctx.strokeRect(-width / 2 - 5, -height / 2 - 4, width + 10, height + 8);
-      ctx.restore();
-    }
-  }
 }
 
 export function hitLayer(ctx: CanvasRenderingContext2D, layers: Layer[], x: number, y: number) {

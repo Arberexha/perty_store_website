@@ -19,7 +19,7 @@ export default async function NewProductPage({ searchParams }: { searchParams: P
         <div className="admin-form-section admin-form-section-separated"><span className="admin-step-number">02</span><div><h2>Design experience</h2><p>Choose the preview studio customers will use and set the smallest order size.</p></div></div>
         <div className="form-row"><label>Design studio<select name="design_template" required defaultValue=""><option value="" disabled>Choose a product type</option><option value="pens">Pen</option><option value="shirts">T-shirt</option><option value="hats">Hat</option><option value="lighters">Lighter (18+ preview only)</option></select></label><label>Minimum quantity<input name="minimum_quantity" type="number" min="1" defaultValue="1" required /><small className="form-help">Customers cannot request fewer than this amount.</small></label></div>
 
-        <div className="admin-form-section admin-form-section-separated"><span className="admin-step-number">03</span><div><h2>Product image and print area</h2><p>Upload your own mockup or use the standard studio image for now.</p></div></div>
+        <div className="admin-form-section admin-form-section-separated"><span className="admin-step-number">03</span><div><h2>Product image</h2><p>Upload your own mockup or use the standard studio image for now.</p></div></div>
         <MockupFields />
         <div className="admin-form-actions"><Link className="admin-secondary" href="/admin/products">Cancel</Link><button className="admin-primary" type="submit" disabled={!groups.length}>Create draft product</button></div>
       </form>

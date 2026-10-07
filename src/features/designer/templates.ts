@@ -1,4 +1,3 @@
-import type { PrintArea } from "@/lib/product-mockup";
 import type { Product, TextLayer } from "./model";
 
 type TemplateLine = Pick<TextLayer, "text" | "color" | "font"> & { y: number; scale: number; curve?: number };
@@ -57,7 +56,7 @@ export const starterTemplates: Record<Product, StarterTemplate[]> = {
   ],
 };
 
-export function templateLayers(template: StarterTemplate, area: PrintArea): TextLayer[] {
+export function templateLayers(template: StarterTemplate, area: { left: number; top: number; right: number; bottom: number }): TextLayer[] {
   const width = area.right - area.left;
   const height = area.bottom - area.top;
   return template.lines.map((line) => ({

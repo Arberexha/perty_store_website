@@ -1,6 +1,6 @@
 # Custom printing shop — draft project specification
 
-Status: **storefront, accounts, preview studios, admin management, and unpaid designer orders implemented**. Admin products marked Published appear on the storefront using one of four existing studios: pens, T-shirts, hats, or lighters. Admin can upload a front product photo and set a rectangular print area for customer text and artwork. Customers can submit designs for non-restricted products as requests, or place an unpaid order when the product has an active priced variant and ordering enabled. Staff can review order and request previews and original artwork in admin. Lighters are 18+ previews only. Online payment integration, multi-view custom product mockups, and production file handling remain in later milestones. Product naming and launch language remain open decisions.
+Status: **storefront, accounts, preview studios, admin management, and unpaid designer orders implemented**. Admin products marked Published appear on the storefront using one of four existing studios: pens, T-shirts, hats, or lighters. Admin can upload a front product photo, and customers can place text and artwork freely across its preview. Customers can submit designs for non-restricted products as requests, or place an unpaid order when the product has an active priced variant and ordering enabled. Staff can review order and request previews and original artwork in admin. Lighters are 18+ previews only. Online payment integration, multi-view custom product mockups, and production file handling remain in later milestones. Product naming and launch language remain open decisions.
 
 ## Goal and launch scope
 
@@ -10,14 +10,14 @@ Customers can create an account and view their orders; guest checkout will also 
 
 ## Customer experience
 
-- Browse products and see their available sizes, materials, colors, print areas, quantity limits, and prices. These options and pricing rules belong to each product, rather than one shared rule for the entire catalogue.
-- Add text or upload an image, then move, resize, and rotate it within the printable area of a product mockup. Save the design and a preview with the order. The first editor is deliberately simple; accurate production output will use the original uploaded file plus the saved design layout.
+- Browse products and see their available sizes, materials, colors, quantity limits, and prices. These options and pricing rules belong to each product, rather than one shared rule for the entire catalogue.
+- Add text or upload an image, then move, resize, and rotate it across the product preview. Save the design and a preview with the order. The first editor is deliberately simple; accurate production output will use the original uploaded file plus the saved design layout.
 - Review the item, quantity, price, shipping or pickup choice, and final preview at checkout. Pay online through a Kosovo-supported merchant payment provider once the shop has an approved merchant account and integration details.
 - Choose delivery within the configured service area or a configured pickup location with displayed opening hours. Receive order status updates and view order history from an optional account.
 
 ## Admin experience
 
-- Manage products, variants, print areas, mockup images, availability, and product-specific price rules (including quantity, size, and material).
+- Manage products, variants, mockup images, availability, and product-specific price rules (including quantity, size, and material).
 - Manage customers, uploaded artwork, saved designs, quote requests, orders, payments, and fulfillment status.
 - Configure pickup locations, opening hours, shipping zones/rates, and site content. Restrict access to customer files and keep an audit trail for important order and payment changes.
 - Enter real prices before launch. Any sample prices used during development will be clearly marked and checkout will stay disabled for products without approved prices.
@@ -26,7 +26,7 @@ Customers can create an account and view their orders; guest checkout will also 
 
 - One TypeScript web application using Next.js for the storefront, admin dashboard, and server API, with PostgreSQL for persistent data. This keeps the codebase manageable for one developer while preserving clear boundaries between customer, admin, and server code.
 - Database migrations and a typed data layer; object storage for private customer uploads and generated previews. Never treat a browser-supplied total as authoritative: calculate prices and validate product options on the server.
-- A small product-editor component with per-product printable regions. Store editable layout data and the original artwork so designs can be reopened and prepared for print.
+- A small product-editor component that stores editable layout data and the original artwork so designs can be reopened and prepared for print.
 - A payment adapter so the actual Kosovo merchant gateway can be added without rewriting checkout. The provider and its checkout/webhook contract must be confirmed before live online payments are enabled.
 - Accessible, responsive design with a clean visual identity. Working name: **Perty Print** until you choose a brand name.
 
@@ -41,7 +41,7 @@ Customers can create an account and view their orders; guest checkout will also 
 ## Implementation milestones
 
 1. **Foundation (implemented):** App setup, visual system, identity schema/migration, admin seed, customer authentication, and shared validation. Automated checks cover the identity migration and account credentials; live PostgreSQL verification remains to be done when a database is running.
-2. **Catalogue and admin (partly implemented):** Admin dashboard, product/variant/price management, category restrictions, pickup and shipping settings, quotes, orders, files, customers, and audit records are implemented. Storefront browsing, product mockups, and print areas remain. Verify product-specific option and pricing behavior.
+2. **Catalogue and admin (partly implemented):** Admin dashboard, product/variant/price management, category restrictions, pickup and shipping settings, quotes, orders, files, customers, and audit records are implemented. Storefront browsing and product mockups remain. Verify product-specific option and pricing behavior.
 3. **Design editor and files:** Private artwork upload, file validation, editor, saved layout/preview, and safe file retrieval for admin. Verify invalid files, bounds, and reopening saved designs.
 4. **Checkout and payments (partly implemented):** Direct order placement from the designer, server-calculated totals, delivery/pickup, order creation, account order history, and admin artwork review are implemented. Cart, payment-provider integration, callback handling, and customer notifications remain. Verify duplicate or failed payment notifications when payments are added.
 5. **Operations and launch:** Order, quote, customer, and fulfillment dashboards; order receipt and cancellation emails are implemented. Other status notifications, broader end-to-end checks, deployment instructions, and production configuration remain.

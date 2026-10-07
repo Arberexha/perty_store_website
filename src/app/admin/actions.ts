@@ -12,8 +12,7 @@ import type { OrderStatus } from "@/lib/order-tracking";
 import { parseEuro, slugify } from "@/lib/admin/format";
 import { productOrderingError } from "@/lib/admin/policy";
 import { isDesignTemplate } from "@/lib/catalog-config";
-import { DEFAULT_PRINT_AREA, MAX_MOCKUP_BYTES, mockupMime, validPrintArea } from "@/lib/product-mockup";
-import type { PrintArea } from "@/lib/product-mockup";
+import { MAX_MOCKUP_BYTES, mockupMime } from "@/lib/product-mockup";
 
 class InputError extends Error {}
 
@@ -58,7 +57,7 @@ function euroAmount(form: FormData, key: string, optional = false): number | nul
   return amount;
 }
 
-async function mockupInput(form: FormData): Promise<{ bytes: Buffer | null; mime: string | null; area: PrintArea }> {
+async function mockupInput(form: FormData): Promise<{ bytes: Buffer | null; mime: string | null }> {
   const upload = form.get("mockup_image");
   let bytes: Buffer | null = null;
   let mime: string | null = null;
@@ -77,12 +76,7 @@ async function mockupInput(form: FormData): Promise<{ bytes: Buffer | null; mime
       throw new InputError("Product photo could not be opened. Choose a valid PNG, JPG, or WebP image");
     }
   }
-  const coordinates = ["left", "top", "right", "bottom"].map((side) => Number(form.get(`print_${side}`)));
-  const area = ["left", "top", "right", "bottom"].every((side) => form.has(`print_${side}`)) && coordinates.every((value) => Number.isFinite(value))
-    ? { left: coordinates[0], top: coordinates[1], right: coordinates[2], bottom: coordinates[3] }
-    : DEFAULT_PRINT_AREA;
-  if (!validPrintArea(area)) throw new InputError("Choose a valid print area inside the product photo");
-  return { bytes, mime, area };
+  return { bytes, mime };
 }
 
 async function audit(actorId: string, action: string, entityType: string, entityId: string) {
@@ -133,7 +127,7 @@ export async function createProduct(form: FormData) {
     if (!isDesignTemplate(template)) throw new InputError("Choose a design studio");
     const mockup = await mockupInput(form);
     const id = randomUUID();
-    await getPool().query(`INSERT INTO products (id,category_id,name,slug,description,age_restricted,minimum_quantity,design_template,mockup_image,mockup_mime,print_area) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [id, categoryId, name, slug, optionalText(form, "description"), category.rows[0].age_restricted || template === "lighters", positiveInteger(form, "minimum_quantity"), template, mockup.bytes, mockup.mime, JSON.stringify(mockup.area)]);
+    await getPool().query(`INSERT INTO products (id,category_id,name,slug,description,age_restricted,minimum_quantity,design_template,mockup_image,mockup_mime) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [id, categoryId, name, slug, optionalText(form, "description"), category.rows[0].age_restricted || template === "lighters", positiveInteger(form, "minimum_quantity"), template, mockup.bytes, mockup.mime]);
     await audit(actor, "created", "product", id);
     return `/admin/products/${id}`;
   });
@@ -162,7 +156,7 @@ export async function updateProduct(form: FormData) {
     const bulkThreshold = optionalInteger(form, "bulk_threshold", 2, 1000);
     const bulkExtraDays = optionalInteger(form, "bulk_extra_days", 1, 60);
     if ((bulkThreshold === null) !== (bulkExtraDays === null)) throw new InputError("Enter both bulk quantity and extra days");
-    const result = await getPool().query(`UPDATE products SET category_id=$2,name=$3,description=$4,status=$5,ordering_enabled=$6,age_restricted=$7,minimum_quantity=$8,design_template=$9,print_area=$10,mockup_image=CASE WHEN $13 THEN NULL WHEN $11::bytea IS NOT NULL THEN $11 ELSE mockup_image END,mockup_mime=CASE WHEN $13 THEN NULL WHEN $12::text IS NOT NULL THEN $12 ELSE mockup_mime END,production_min_days=$14,production_max_days=$15,bulk_threshold=$16,bulk_extra_days=$17,updated_at=now() WHERE id=$1`, [id, categoryId, text(form, "name", 120), optionalText(form, "description"), status, orderable, ageRestricted, positiveInteger(form, "minimum_quantity"), template, JSON.stringify(mockup.area), mockup.bytes, mockup.mime, removeMockup, productionMin, productionMax, bulkThreshold, bulkExtraDays]);
+    const result = await getPool().query(`UPDATE products SET category_id=$2,name=$3,description=$4,status=$5,ordering_enabled=$6,age_restricted=$7,minimum_quantity=$8,design_template=$9,mockup_image=CASE WHEN $12 THEN NULL WHEN $10::bytea IS NOT NULL THEN $10 ELSE mockup_image END,mockup_mime=CASE WHEN $12 THEN NULL WHEN $11::text IS NOT NULL THEN $11 ELSE mockup_mime END,production_min_days=$13,production_max_days=$14,bulk_threshold=$15,bulk_extra_days=$16,updated_at=now() WHERE id=$1`, [id, categoryId, text(form, "name", 120), optionalText(form, "description"), status, orderable, ageRestricted, positiveInteger(form, "minimum_quantity"), template, mockup.bytes, mockup.mime, removeMockup, productionMin, productionMax, bulkThreshold, bulkExtraDays]);
     if (!result.rowCount) throw new InputError("Product not found");
     await audit(actor, "updated", "product", id);
   });
