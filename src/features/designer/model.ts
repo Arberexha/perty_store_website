@@ -2,7 +2,7 @@ export const WIDTH = 1000;
 export const HEIGHT = 420;
 export type Product = "pens" | "shirts" | "hats" | "lighters";
 export type ShirtSide = "front" | "back";
-export type ShirtTool = "product" | "text" | "upload" | "art" | "personalize" | "layers";
+export type ShirtTool = "templates" | "product" | "text" | "upload" | "art" | "personalize" | "layers";
 export type Personalization = { name: string; number: string; size: string };
 export const photoSources: Record<Product, string> = {
   pens: "/images/studio-pen-photo.png",
@@ -33,7 +33,7 @@ export type BaseLayer = { id: string; x: number; y: number; scale: number; rotat
 export type TextLayer = BaseLayer & { kind: "text"; text: string; color: string; font: "Arial" | "Georgia" | "PertySharpSans"; outlineColor?: string; outlineWidth?: number; curve?: number };
 export type ImageLayer = BaseLayer & { kind: "image"; src: string; aspect: number };
 export type Layer = TextLayer | ImageLayer;
-export type DragState = { id: string; dx: number; dy: number };
+export type DragState = { id: string; dx: number; dy: number; startX: number; startY: number; moved: boolean };
 export type DraftSnapshot = { layers: Layer[]; color: string; selectedId: string | null; side: ShirtSide; personalizations: Personalization[]; colorVariants: string[] };
 
 export const shirtSides: { id: ShirtSide; label: string }[] = [
@@ -53,7 +53,6 @@ export function printArea(product: Product, side: ShirtSide) {
   if (side === "back") return { left: 390, top: 95, right: 610, bottom: 325 };
   return products.shirts.print;
 }
-export type ViewDrag = { x: number; y: number; yaw: number; pitch: number };
 
 export const initialLayers: Layer[] = [
   { id: "starter", kind: "text", text: "YOUR IDEA", color: "#183c30", font: "Arial", x: 490, y: 210, scale: 1, rotation: 0 },

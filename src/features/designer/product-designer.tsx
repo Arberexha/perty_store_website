@@ -17,8 +17,10 @@ import { removePlainBackground } from "@/lib/remove-plain-background";
 import { DEFAULT_PRINT_AREA } from "@/lib/product-mockup";
 import type { PrintArea } from "@/lib/product-mockup";
 import { HEIGHT, WIDTH, artIcons, initialLayers, photoSources, printArea, products, shirtSides } from "./model";
-import type { DragState, DraftSnapshot, Layer, Personalization, Product, ShirtSide, ShirtTool, TextLayer, ViewDrag } from "./model";
+import type { DragState, DraftSnapshot, Layer, Personalization, Product, ShirtSide, ShirtTool, TextLayer } from "./model";
 import { canvasPoint, hitLayer, loadImage, loadProductPhoto, render } from "./canvas";
+import { starterTemplates, templateLayers } from "./templates";
+import type { StarterTemplate } from "./templates";
 
 const legacyProductIds: Record<Product, string> = { pens: "product-pen", shirts: "product-tshirt", hats: "product-hat", lighters: "product-lighter" };
 
@@ -29,7 +31,7 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   const canRequest = product !== "lighters" && !catalogAgeRestricted;
   const canOrder = canRequest && Boolean(orderOptions?.variants.length);
   const [shirtSide, setShirtSide] = useState<ShirtSide>("front");
-  const [shirtTool, setShirtTool] = useState<ShirtTool>(customPhoto ? "text" : "product");
+  const [shirtTool, setShirtTool] = useState<ShirtTool>("templates");
   const [artColor, setArtColor] = useState("#0000ee");
   const [rosterName, setRosterName] = useState("");
   const [rosterNumber, setRosterNumber] = useState("");
@@ -40,19 +42,17 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   const productColors = config.colors;
   const STORAGE_KEY = `perty-${catalogProductId}-design-v1`;
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const inlineTextRef = useRef<HTMLInputElement>(null);
   const shirtUploadRef = useRef<HTMLInputElement>(null);
   const imagesRef = useRef(new Map<string, HTMLImageElement>());
   const photoRef = useRef<HTMLImageElement | null>(null);
   const [photoReady, setPhotoReady] = useState(false);
   const [fontReady, setFontReady] = useState(false);
   const dragRef = useRef<DragState | null>(null);
-  const viewDragRef = useRef<ViewDrag | null>(null);
   const pastRef = useRef<DraftSnapshot[]>([]);
   const futureRef = useRef<DraftSnapshot[]>([]);
   const [historyState, setHistoryState] = useState({ undo: 0, redo: 0 });
-  const [viewMode, setViewMode] = useState<"edit" | "inspect">("edit");
-  const [yaw, setYaw] = useState(-22);
-  const [pitch, setPitch] = useState(13);
+  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [productColor, setProductColor] = useState(config.colors[0].value);
   const [layers, setLayers] = useState<Layer[]>(() => product === "shirts" ? [] : initialLayers.map((layer) => ({ ...layer, font: "PertySharpSans", color: "#000000", x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: product === "lighters" ? .52 : product === "hats" ? .75 : product === "pens" ? .65 : 1 })));
@@ -76,6 +76,14 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   const [submitError, setSubmitError] = useState<string | null>(null);
   const visibleLayers = useMemo(() => product === "shirts" ? layers.filter((layer) => (layer.side ?? "front") === shirtSide) : layers, [product, layers, shirtSide]);
   const selected = visibleLayers.find((layer) => layer.id === selectedId) ?? null;
+  const editingText = selected?.kind === "text" && selected.id === inlineEditingId ? selected : null;
+  const editingTextId = editingText?.id;
+
+  useEffect(() => {
+    if (!editingTextId) return;
+    inlineTextRef.current?.focus();
+    inlineTextRef.current?.select();
+  }, [editingTextId]);
 
   function currentSnapshot(): DraftSnapshot { return { layers, color: productColor, selectedId, side: shirtSide, personalizations, colorVariants }; }
   function rememberChange() {
@@ -180,12 +188,12 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     for (const layer of layers) {
       if (layer.kind !== "image" || imagesRef.current.has(layer.src)) continue;
       const image = new Image();
-      image.onload = () => render(ctx, product, shirtSide, productColor, visibleLayers, viewMode === "edit" ? selectedId : null, imagesRef.current, viewMode === "edit", viewMode === "inspect", photoRef.current, customArea);
+      image.onload = () => render(ctx, product, shirtSide, productColor, editingText ? visibleLayers.filter((item) => item.id !== editingText.id) : visibleLayers, selectedId, imagesRef.current, true, false, photoRef.current, customArea);
       image.src = layer.src;
       imagesRef.current.set(layer.src, image);
     }
-    render(ctx, product, shirtSide, productColor, visibleLayers, viewMode === "edit" ? selectedId : null, imagesRef.current, viewMode === "edit", viewMode === "inspect", photoRef.current, customArea);
-  }, [layers, visibleLayers, productColor, selectedId, product, shirtSide, viewMode, photoReady, fontReady, customArea]);
+    render(ctx, product, shirtSide, productColor, editingText ? visibleLayers.filter((layer) => layer.id !== editingText.id) : visibleLayers, selectedId, imagesRef.current, true, false, photoRef.current, customArea);
+  }, [layers, visibleLayers, productColor, selectedId, editingText, product, shirtSide, photoReady, fontReady, customArea]);
 
   function updateSelected(patch: Partial<Layer>) {
     if (!selectedId) return;
@@ -199,7 +207,6 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   function addText() {
     if (layers.length >= 20) { setMessage("Remove a design layer before adding another one."); return; }
     rememberChange();
-    setViewMode("edit");
     const id = crypto.randomUUID();
     setLayers((current) => [...current, { id, kind: "text", text: "YOUR TEXT", color: "#000000", font: "PertySharpSans", x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 210)) : product === "lighters" ? .52 : product === "hats" ? .75 : product === "pens" ? .65 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
     setSelectedId(id);
@@ -210,7 +217,6 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     photoRef.current = null;
     setPhotoReady(false);
     setSelectedId(null);
-    setViewMode("edit");
     setShirtSide(side);
   }
 
@@ -229,7 +235,6 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
       const id = crypto.randomUUID();
       setLayers((current) => [...current, { id, kind: "image", src: canvas.toDataURL("image/png"), aspect: 1, x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 150)) : product === "pens" ? .26 : product === "lighters" ? .8 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
       setSelectedId(id);
-      setViewMode("edit");
       setMessage(`${icon.name} added to the ${product === "shirts" ? shirtSides.find((item) => item.id === shirtSide)?.label.toLowerCase() : config.singular}.`);
     };
     image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
@@ -300,7 +305,6 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
           }
         }
         rememberChange();
-        setViewMode("edit");
         const id = crypto.randomUUID();
         setLayers((current) => [...current, { id, kind: "image", src: source, aspect: image.width / image.height, x: (PRINT.left + PRINT.right) / 2, y: (PRINT.top + PRINT.bottom) / 2, scale: customArea ? Math.max(.4, Math.min(1, (PRINT.right - PRINT.left) / 150)) : product === "pens" ? .3 : product === "lighters" ? .85 : 1, rotation: 0, side: product === "shirts" ? shirtSide : undefined }]);
         setSelectedId(id);
@@ -325,36 +329,29 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
   }
 
   function onPointerDown(event: PointerEvent<HTMLCanvasElement>) {
-    if (viewMode === "inspect") {
-      viewDragRef.current = { x: event.clientX, y: event.clientY, yaw, pitch };
-      event.currentTarget.setPointerCapture(event.pointerId);
-      return;
-    }
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     canvas.focus();
     const point = canvasPoint(event, canvas);
     const layer = hitLayer(ctx, visibleLayers, point.x, point.y);
+    setInlineEditingId(null);
     setSelectedId(layer?.id ?? null);
     if (!layer) return;
-    rememberChange();
-    dragRef.current = { id: layer.id, dx: point.x - layer.x, dy: point.y - layer.y };
+    dragRef.current = { id: layer.id, dx: point.x - layer.x, dy: point.y - layer.y, startX: point.x, startY: point.y, moved: false };
     canvas.setPointerCapture(event.pointerId);
   }
 
   function onPointerMove(event: PointerEvent<HTMLCanvasElement>) {
-    if (viewMode === "inspect") {
-      const drag = viewDragRef.current;
-      if (!drag) return;
-      setYaw(Math.max(-65, Math.min(65, drag.yaw + (event.clientX - drag.x) * .3)));
-      setPitch(Math.max(-40, Math.min(40, drag.pitch - (event.clientY - drag.y) * .3)));
-      return;
-    }
     const drag = dragRef.current;
     const canvas = canvasRef.current;
     if (!drag || !canvas) return;
     const point = canvasPoint(event, canvas);
+    if (!drag.moved) {
+      if (Math.hypot(point.x - drag.startX, point.y - drag.startY) < 4) return;
+      drag.moved = true;
+      rememberChange();
+    }
     setLayers((current) => current.map((layer) => layer.id === drag.id ? {
       ...layer,
       x: Math.max(customArea?.left ?? 0, Math.min(customArea?.right ?? WIDTH, point.x - drag.dx)),
@@ -362,12 +359,15 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     } : layer));
   }
 
-  function onPointerUp() { dragRef.current = null; viewDragRef.current = null; }
+  function onPointerUp() {
+    const drag = dragRef.current;
+    if (drag && !drag.moved && visibleLayers.some((layer) => layer.id === drag.id && layer.kind === "text")) setInlineEditingId(drag.id);
+    dragRef.current = null;
+  }
 
   function onCanvasKeyDown(event: KeyboardEvent<HTMLCanvasElement>) {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return; }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); return; }
-    if (viewMode === "inspect") return;
     if (selectedId && (event.key === "Delete" || event.key === "Backspace")) { event.preventDefault(); deleteSelected(); return; }
     if (!selectedId || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
     event.preventDefault();
@@ -601,6 +601,18 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
     setMessage(`Blank ${config.singular} ready. Add text or upload an image to start.`);
   }
 
+  function applyTemplate(template: StarterTemplate) {
+    rememberChange();
+    const nextLayers = templateLayers(template, customArea ?? printArea(product, "front"));
+    setLayers(nextLayers.map((layer) => product === "shirts" ? { ...layer, side: "front" as const } : layer));
+    setPersonalizations([]);
+    setColorVariants([]);
+    setShirtSide("front");
+    setSelectedId(nextLayers[0]?.id ?? null);
+    if (!customPhoto) setProductColor(template.productColor);
+    setMessage(`${template.name} template loaded. Select any text on the preview to make it yours. Use Undo to restore your previous design.`);
+  }
+
   function duplicateSelected() {
     if (!selected) return;
     if (layers.length >= 20) { setMessage("Remove a design layer before duplicating another one."); return; }
@@ -645,33 +657,34 @@ export default function ProductDesigner({ product, catalogProductId, catalogName
         <div className="studio-heading"><span className="store-kicker">{catalogName.toUpperCase()}</span><h1>Design {catalogName}.</h1><p>{customPhoto ? "Add text or artwork, then drag it into the marked print area on this product photo." : `Choose a color, add your text or artwork, then drag it anywhere on the ${config.singular}.`} Use your finger on a phone or tablet.</p><nav className="studio-product-nav" aria-label="Choose a product to design">{catalogProducts.map((item) => <Link key={item.id} href={`/design/${item.slug}`} aria-current={catalogProductId === item.id ? "page" : undefined}>{item.name}{item.age_restricted ? " 18+" : ""}</Link>)}</nav></div>
         <div className="studio-grid">
           <section className="studio-preview" aria-label={`${catalogName} design preview`}>
-            <div className="studio-preview-header"><strong>Live preview</strong><span>{viewMode === "edit" ? customPhoto ? "Drag artwork inside the marked print area" : "Drag artwork anywhere on the product" : "Drag the product to inspect it from an angle"}</span></div>
+            <div className="studio-preview-header"><strong>Live preview</strong><span>{customPhoto ? "Drag artwork inside the marked print area" : "Drag artwork anywhere on the product"}</span></div>
             <div className="studio-view-toolbar">
-              <div className="studio-view-tabs" role="group" aria-label="Preview mode"><button type="button" aria-pressed={viewMode === "edit"} onClick={() => setViewMode("edit")}>Edit design</button><button type="button" aria-pressed={viewMode === "inspect"} onClick={() => setViewMode("inspect")}>Angle view</button></div>
               <div className="studio-history"><button type="button" onClick={undo} disabled={!historyState.undo} aria-label="Undo">↶ Undo</button><button type="button" onClick={redo} disabled={!historyState.redo} aria-label="Redo">↷ Redo</button></div>
             </div>
             {product === "shirts" && !customPhoto && <div className="studio-side-switcher" role="group" aria-label="T-shirt print area">
               {shirtSides.map((side) => <button key={side.id} type="button" aria-pressed={shirtSide === side.id} onClick={() => switchShirtSide(side.id)}>{side.label}<small>{layers.filter((layer) => (layer.side ?? "front") === side.id).length} designs</small></button>)}
             </div>}
             {selected && <div className="studio-selection-bar"><span>Selected: <strong>{selected.kind === "text" ? selected.text || "Untitled text" : "Uploaded image"}</strong></span><button type="button" onClick={deleteSelected}>Delete selected {selected.kind === "text" ? "text" : "image"}</button></div>}
-            <div className={`studio-view-stage ${viewMode === "inspect" ? "is-inspecting" : ""}`}>
-              <div className="studio-view-object" style={{ transform: viewMode === "inspect" ? `rotateX(${pitch}deg) rotateY(${yaw}deg) scale(${zoom})` : `scale(${zoom})` }}>
-                <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} tabIndex={0} aria-label={`${config.name} preview. ${viewMode === "inspect" ? "Drag to rotate the angled view." : "Select and drag artwork. Use arrow keys to move it or Delete to remove it."}`} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onKeyDown={onCanvasKeyDown} onPaste={onCanvasPaste} onDragOver={(event) => event.preventDefault()} onDrop={onImageDrop} />
+            <div className="studio-view-stage">
+              <div className="studio-view-object" style={{ transform: `scale(${zoom})` }}>
+                <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} tabIndex={0} aria-label={`${config.name} preview. Click text to edit it here, or drag artwork to move it. Use arrow keys for precise placement or Delete to remove it.`} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={() => { dragRef.current = null; }} onKeyDown={onCanvasKeyDown} onPaste={onCanvasPaste} onDragOver={(event) => event.preventDefault()} onDrop={onImageDrop} />
+                {editingText && <input ref={inlineTextRef} className="studio-inline-text" aria-label="Edit text on product" type="text" maxLength={32} value={editingText.text} style={{ left: `${editingText.x / WIDTH * 100}%`, top: `${editingText.y / HEIGHT * 100}%`, width: `${Math.max(110, Math.min(650, editingText.text.length * 22 * editingText.scale + 50)) / WIDTH * 100}%`, fontSize: `max(16px, ${3.4 * editingText.scale}cqw)`, fontFamily: editingText.font === "Georgia" ? "Georgia, serif" : editingText.font === "Arial" ? "Arial, sans-serif" : "PertySharpSans, Arial, sans-serif", color: editingText.color, transform: `translate(-50%, -50%) rotate(${editingText.rotation}deg)` }} onFocus={rememberChange} onChange={(event) => updateSelected({ text: event.target.value })} onBlur={() => setInlineEditingId(null)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur(); }} />}
               </div>
             </div>
-            <div className="studio-view-controls"><label>Zoom <strong>{Math.round(zoom * 100)}%</strong><input type="range" min="0.7" max="1.7" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>{viewMode === "inspect" && <><label>Turn <strong>{Math.round(yaw)}°</strong><input type="range" min="-65" max="65" value={yaw} onChange={(event) => setYaw(Number(event.target.value))} /></label><label>Tilt <strong>{Math.round(pitch)}°</strong><input type="range" min="-40" max="40" value={pitch} onChange={(event) => setPitch(Number(event.target.value))} /></label></>}<button type="button" onClick={() => { setYaw(-22); setPitch(13); setZoom(1); }}>Reset view</button></div>
-            <div className="studio-preview-footer"><span>{product === "shirts" && !customPhoto ? `${shirtSides.find((side) => side.id === shirtSide)?.label} · ${visibleLayers.length} design layers` : viewMode === "edit" ? "Drag artwork to move it. Use the arrow keys for precise placement." : "Drag to turn the product. Switch to Edit design to move artwork."}</span><div className="studio-preview-actions">{customer ? <button type="button" disabled={!loaded} onClick={() => { setSaveError(null); setSaveOpen((open) => !open); }}>{accountDesignId ? "Save changes" : "Save design"}</button> : <Link href="/login">Sign in to save</Link>}<button type="button" onClick={sharePreview}>Share preview</button><button type="button" onClick={downloadPreview}>Download PNG</button>{canRequest && <a href="#send-design">{canOrder ? "Place order →" : "Get a quote →"}</a>}</div></div>
+            <div className="studio-view-controls"><label>Zoom <strong>{Math.round(zoom * 100)}%</strong><input type="range" min="0.7" max="1.7" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label><button type="button" onClick={() => setZoom(1)}>Reset zoom</button></div>
+            <div className="studio-preview-footer"><span>Click text to edit it on the product, or drag to move it.{product === "shirts" && !customPhoto ? ` ${shirtSides.find((side) => side.id === shirtSide)?.label} · ${visibleLayers.length} layers.` : ""}</span><div className="studio-preview-actions">{customer ? <button type="button" disabled={!loaded} onClick={() => { setSaveError(null); setSaveOpen((open) => !open); }}>{accountDesignId ? "Save changes" : "Save design"}</button> : <Link href="/login">Sign in to save</Link>}<button type="button" onClick={sharePreview}>Share preview</button><button type="button" onClick={downloadPreview}>Download PNG</button>{canRequest && <a href="#send-design">{canOrder ? "Place order →" : "Get a quote →"}</a>}</div></div>
             {saveOpen && customer && <form className="studio-save-panel" onSubmit={saveToAccount}><div><label htmlFor="studio-design-name">Design name</label><input id="studio-design-name" value={designName} maxLength={120} required onChange={(event) => setDesignName(event.target.value)} placeholder="Name your design" /></div><button type="submit" disabled={saving || !loaded}>{saving ? "Saving…" : accountDesignId ? "Save changes" : "Save to My designs"}</button><Link href="/account">My designs →</Link>{saveError && <p role="alert">{saveError}</p>}</form>}
           </section>
           <aside className="studio-shirt-tools" aria-label={`${catalogName} design tools`}>
             <div className="shirt-tools-heading"><span>DESIGN LAB</span><h2>Make it yours.</h2><p>{customPhoto ? "Decorate the marked area on this product photo." : product === "shirts" ? "Design the front and back of your T-shirt." : `Add a name, logo, or artwork to your ${config.singular}.`}</p></div>
             <div className="shirt-tool-tabs" role="group" aria-label="Design tools">
               {([
-                ...(!customPhoto ? [["product", "◉", "Product color"]] as const : []), ["text", "T", "Add text"], ["upload", "↑", "Upload"],
+                ["templates", "▦", "Templates"], ...(!customPhoto ? [["product", "◉", "Product color"]] as const : []), ["text", "T", "Add text"], ["upload", "↑", "Upload"],
                 ["art", "✦", "Add art"], ...(product === "shirts" && !customPhoto ? [["personalize", "#", "Names & numbers"]] as const : []), ["layers", "☷", "Layers"],
               ] as const).map(([id, icon, label]) => <button type="button" key={id} disabled={!loaded} aria-pressed={shirtTool === id} onClick={() => setShirtTool(id)}><span aria-hidden="true">{icon}</span>{label}</button>)}
             </div>
             <div className="shirt-tool-panel">
+              {shirtTool === "templates" && <section><h3>Start with a design</h3><p>Choose a layout, then change its words, colors, size, and placement. Choosing another layout replaces the current design; Undo brings it back.</p><div className="studio-template-grid">{starterTemplates[product].map((template) => <button key={template.id} type="button" onClick={() => applyTemplate(template)} disabled={!loaded} aria-label={`Use ${template.name} template`}><span className="studio-template-preview" style={{ backgroundColor: customPhoto ? "#f4f1e9" : template.productColor }} aria-hidden="true">{template.lines.map((line, index) => <span key={index} style={{ color: line.color, fontFamily: line.font === "Georgia" ? "Georgia, serif" : "PertySharpSans, Arial, sans-serif", fontSize: `${Math.max(13, Math.min(line.scale * 19, 165 / line.text.length))}px` }}>{line.text}</span>)}</span><strong>{template.name}</strong><small>{template.description}</small></button>)}</div><p className="shirt-tool-note">Templates are editable starting points. Add your own artwork after choosing one.</p></section>}
               {shirtTool === "product" && !customPhoto && <section><h3>Product color</h3><p>Choose a {config.singular} color and preview your design immediately.</p><div className="color-options">{productColors.map((color) => <button type="button" key={color.value} className={productColor === color.value ? "color-swatch active" : "color-swatch"} style={{ backgroundColor: color.value }} aria-label={color.name} aria-pressed={productColor === color.value} title={color.name} onClick={() => { rememberChange(); setProductColor(color.value); }} />)}</div><label className="custom-product-color">Custom {config.singular} color<input type="color" value={productColor} onPointerDown={rememberChange} onChange={(event) => setProductColor(event.target.value)} /></label><span className="tool-hint">{productColors.find((color) => color.value === productColor)?.name ?? productColor.toUpperCase()}</span>{canRequest && !canOrder && <><button className="shirt-secondary-action" type="button" onClick={() => { if (!colorVariants.includes(productColor) && colorVariants.length < 12) { rememberChange(); setColorVariants((current) => [...current, productColor]); } }}>+ Add this color to request</button>{colorVariants.length > 0 && <div className="shirt-color-variants">{colorVariants.map((color) => <button key={color} type="button" title={`Remove ${color}`} onClick={() => { rememberChange(); setColorVariants((current) => current.filter((item) => item !== color)); }}><i style={{ backgroundColor: color }} />{productColors.find((item) => item.value === color)?.name ?? color} ×</button>)}</div>}</>}</section>}
               {shirtTool === "text" && <section><h3>Add text</h3><p>Add a line of text to the {customPhoto ? "marked area" : product === "shirts" ? shirtSides.find((side) => side.id === shirtSide)?.label.toLowerCase() : config.singular}. Select it on the {customPhoto ? "photo" : config.singular} to change the font, shape, outline, and color.</p><button className="shirt-primary-action" type="button" onClick={addText}>+ Add text</button></section>}
               {shirtTool === "upload" && <section><h3>Upload your artwork</h3><p>PNG, JPG, or WebP up to 1 MB. Plain light backgrounds are removed automatically. Transparent PNGs keep their transparency.</p><button className="shirt-primary-action" type="button" onClick={() => shirtUploadRef.current?.click()}>↑ Choose an image</button><input ref={shirtUploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="visually-hidden" onChange={uploadImage} /><p className="shirt-tool-note">You can also drag an image onto the {customPhoto ? "photo" : config.singular}.</p></section>}
