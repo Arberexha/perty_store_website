@@ -93,11 +93,11 @@ export async function POST(request: NextRequest) {
     readyEstimate = orderReadyEstimate({ productionMinDays: product.production_min_days, productionMaxDays: product.production_max_days, bulkThreshold: product.bulk_threshold, bulkExtraDays: product.bulk_extra_days }, input.quantity, input.fulfillmentMethod, transit, new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Belgrade", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()));
 
     const inserted = await client.query<{ tracking_token: string }>(`INSERT INTO orders
-      (id,user_id,customer_name,customer_email,customer_phone,customer_note,fulfillment_method,pickup_location_id,shipping_address,shipping_zone_id,subtotal_cents,shipping_cents,total_cents,confirmation_email_status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending') RETURNING tracking_token`, [
+      (id,user_id,customer_name,customer_email,customer_phone,customer_note,fulfillment_method,pickup_location_id,shipping_address,shipping_zone_id,subtotal_cents,shipping_cents,total_cents,ready_estimate,confirmation_email_status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending') RETURNING tracking_token`, [
       id, user?.id ?? null, input.customerName, input.customerEmail.toLowerCase(), input.customerPhone,
       input.notes, input.fulfillmentMethod, pickupLocationId, shippingAddress, shippingZoneId,
-      price.subtotalCents, price.shippingCents, price.totalCents,
+      price.subtotalCents, price.shippingCents, price.totalCents, readyEstimate ? JSON.stringify(readyEstimate) : null,
     ]);
     trackingToken = inserted.rows[0].tracking_token;
     await client.query(`INSERT INTO order_items

@@ -9,28 +9,41 @@ test("a customer reopens an order with current pricing and places a new order", 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const suffix = randomUUID().slice(0, 8);
   const userId = randomUUID();
+  const otherUserId = randomUUID();
   const productId = randomUUID();
   const variantId = randomUUID();
   const replacementVariantId = randomUUID();
   const oldOrderId = randomUUID();
   const sessionToken = randomBytes(32).toString("base64url");
   const sessionHash = createHash("sha256").update(sessionToken).digest("hex");
+  const otherToken = randomBytes(32).toString("base64url");
+  const otherTokenHash = createHash("sha256").update(otherToken).digest("hex");
   const slug = `reorder-shirt-${suffix}`;
   const email = `reorder-${suffix}@example.invalid`;
   const baseURL = test.info().project.use.baseURL!;
+  const preview = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLytQAAAABJRU5ErkJggg==", "base64");
   try {
     await pool.query("INSERT INTO users (id,email,password_hash,name,role) VALUES ($1,$2,'temporary-test-account','Repeat customer','customer')", [userId, email]);
+    await pool.query("INSERT INTO users (id,email,password_hash,name,role) VALUES ($1,$2,'temporary-test-account','Another customer','customer')", [otherUserId, `another-${suffix}@example.invalid`]);
     await pool.query("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,now() + interval '10 minutes')", [sessionHash, userId]);
+    await pool.query("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,now() + interval '10 minutes')", [otherTokenHash, otherUserId]);
     await pool.query("INSERT INTO products (id,category_id,name,slug,description,design_template,status,ordering_enabled,minimum_quantity,production_min_days,production_max_days) VALUES ($1,'category-apparel',$2,$3,'Test reorder shirt','shirts','published',true,1,3,5)", [productId, `Reorder shirt ${suffix}`, slug]);
     await pool.query("INSERT INTO product_variants (id,product_id,sku,label,base_price_cents) VALUES ($1,$2,$3,'Medium',2000)", [variantId, productId, `REORDER-${suffix}`]);
-    await pool.query("INSERT INTO orders (id,user_id,customer_name,customer_email,customer_phone,fulfillment_method,subtotal_cents,total_cents) VALUES ($1,$2,'Repeat customer',$3,'123456789','pickup',4500,4500)", [oldOrderId, userId, email]);
+    await pool.query("INSERT INTO orders (id,user_id,customer_name,customer_email,customer_phone,fulfillment_method,subtotal_cents,total_cents,ready_estimate) VALUES ($1,$2,'Repeat customer',$3,'123456789','pickup',4500,4500,$4)", [oldOrderId, userId, email, JSON.stringify({ minDate: "2026-10-12", maxDate: "2026-10-14", kind: "pickup" })]);
     const design = { layers: [{ id: "original-text", kind: "text", text: "ORIGINAL ART", color: "#000000", font: "Arial", x: 500, y: 210, scale: 1, rotation: 0, side: "front" }], personalizations: [], previewSide: "front", productColors: ["#f4f1e9"], productColor: "#f4f1e9" };
-    await pool.query("INSERT INTO order_items (id,order_id,product_id,variant_id,product_name,variant_label,quantity,unit_price_cents,line_total_cents,design_data) VALUES ($1,$2,$3,$4,'Reorder shirt','Medium',3,1500,4500,$5)", [randomUUID(), oldOrderId, productId, variantId, JSON.stringify(design)]);
+    const itemId = randomUUID();
+    await pool.query("INSERT INTO order_items (id,order_id,product_id,variant_id,product_name,variant_label,quantity,unit_price_cents,line_total_cents,design_data,preview_png) VALUES ($1,$2,$3,$4,'Reorder shirt','Medium',3,1500,4500,$5,$6)", [itemId, oldOrderId, productId, variantId, JSON.stringify(design), preview]);
     expect((await request.get(`/api/orders/${oldOrderId}/reorder`)).status()).toBe(401);
+    expect((await request.get(`/account/orders/${oldOrderId}/items/${itemId}/preview`)).status()).toBe(401);
+    expect((await request.get(`/account/orders/${oldOrderId}/items/${itemId}/preview`, { headers: { cookie: `perty_session=${otherToken}` } })).status()).toBe(404);
 
     await page.context().addCookies([{ name: "perty_session", value: sessionToken, url: baseURL }]);
     await page.goto("/account?section=orders");
     const orderRow = page.locator(".account-orders li").filter({ hasText: oldOrderId.slice(0, 8) });
+    await expect(orderRow.getByRole("img", { name: `Design preview for order ${oldOrderId.slice(0, 8)}` })).toBeVisible();
+    await expect(orderRow).toContainText("3 items");
+    await expect(orderRow).toContainText("Estimated pickup: 12 Oct 2026 – 14 Oct 2026");
+    expect((await page.request.get(`/account/orders/${oldOrderId}/items/${itemId}/preview`)).status()).toBe(200);
     await expect(orderRow.getByRole("link", { name: "Order again" })).toBeVisible();
     await orderRow.getByRole("link", { name: "Order again" }).click();
     await expect(page.getByRole("heading", { name: "Order again." })).toBeVisible();
@@ -56,7 +69,8 @@ test("a customer reopens an order with current pricing and places a new order", 
   } finally {
     await pool.query("DELETE FROM orders WHERE user_id=$1", [userId]);
     await pool.query("DELETE FROM sessions WHERE token_hash=$1", [sessionHash]);
-    await pool.query("DELETE FROM users WHERE id=$1", [userId]);
+    await pool.query("DELETE FROM sessions WHERE token_hash=$1", [otherTokenHash]);
+    await pool.query("DELETE FROM users WHERE id IN ($1,$2)", [userId, otherUserId]);
     await pool.query("DELETE FROM products WHERE id=$1", [productId]);
     await pool.end();
   }

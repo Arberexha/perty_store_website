@@ -51,13 +51,15 @@ test("customer places a designed order at the server calculated total", async ({
     await expect(banner).toContainText(/Order #[0-9a-f]{8} placed/);
     const trackingLink = page.getByRole("link", { name: "Track your order" });
     await expect(trackingLink).toBeVisible();
-    const saved = await pool.query<{ id: string; total_cents: number; subtotal_cents: number; shipping_cents: number; status: string; confirmation_email_status: string; payment_count: number; preview_size: number; unit_price_cents: number; quantity: number }>(`SELECT o.id,o.total_cents,o.subtotal_cents,o.shipping_cents,o.status,o.confirmation_email_status,
+    const saved = await pool.query<{ id: string; total_cents: number; subtotal_cents: number; shipping_cents: number; status: string; confirmation_email_status: string; payment_count: number; preview_size: number; unit_price_cents: number; quantity: number; ready_estimate: { minDate: string; maxDate: string; kind: string } }>(`SELECT o.id,o.total_cents,o.subtotal_cents,o.shipping_cents,o.status,o.confirmation_email_status,o.ready_estimate,
       (SELECT count(*)::int FROM payments WHERE order_id=o.id) AS payment_count,
       octet_length(i.preview_png) AS preview_size,i.unit_price_cents,i.quantity
       FROM orders o JOIN order_items i ON i.order_id=o.id WHERE o.customer_email=$1`, [email]);
     expect(saved.rows[0]).toMatchObject({ total_cents: 5900, subtotal_cents: 5400, shipping_cents: 500, status: "new", payment_count: 0, unit_price_cents: 1800, quantity: 3 });
     expect(["sent", "failed", "not_configured"]).toContain(saved.rows[0].confirmation_email_status);
     expect(saved.rows[0].preview_size).toBeGreaterThan(100);
+    expect(saved.rows[0].ready_estimate).toMatchObject({ kind: "delivery" });
+    expect(saved.rows[0].ready_estimate.minDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     orderId = saved.rows[0].id;
     await trackingLink.click();
     await expect(page.locator(".order-announcement")).toContainText("Estimated to arrive");

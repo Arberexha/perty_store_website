@@ -86,10 +86,10 @@ export async function POST(request: NextRequest) {
     if (total !== input.expectedTotalCents) throw new CartOrderError("The cart price changed. Refresh the page and review the total before ordering.", 409);
     readyEstimate = combinedOrderReadyEstimate(prepared.map((item) => ({ timing: item.timing, quantity: item.input.quantity })), input.fulfillmentMethod, transit, new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Belgrade", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()));
     const inserted = await client.query<{ tracking_token: string }>(`INSERT INTO orders
-      (id,user_id,customer_name,customer_email,customer_phone,customer_note,fulfillment_method,pickup_location_id,shipping_address,shipping_zone_id,subtotal_cents,shipping_cents,total_cents,confirmation_email_status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending') RETURNING tracking_token`, [
+      (id,user_id,customer_name,customer_email,customer_phone,customer_note,fulfillment_method,pickup_location_id,shipping_address,shipping_zone_id,subtotal_cents,shipping_cents,total_cents,ready_estimate,confirmation_email_status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending') RETURNING tracking_token`, [
       id, user?.id ?? null, input.customerName, input.customerEmail.toLowerCase(), input.customerPhone, input.notes,
-      input.fulfillmentMethod, pickupLocationId, shippingAddress, shippingZoneId, subtotal, shippingCents, total,
+      input.fulfillmentMethod, pickupLocationId, shippingAddress, shippingZoneId, subtotal, shippingCents, total, readyEstimate ? JSON.stringify(readyEstimate) : null,
     ]);
     trackingToken = inserted.rows[0].tracking_token;
     for (const item of prepared) {
