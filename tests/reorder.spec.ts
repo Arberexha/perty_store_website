@@ -29,7 +29,7 @@ test("a customer reopens an order with current pricing and places a new order", 
     expect((await request.get(`/api/orders/${oldOrderId}/reorder`)).status()).toBe(401);
 
     await page.context().addCookies([{ name: "perty_session", value: sessionToken, url: baseURL }]);
-    await page.goto("/account");
+    await page.goto("/account?section=orders");
     const orderRow = page.locator(".account-orders li").filter({ hasText: oldOrderId.slice(0, 8) });
     await expect(orderRow.getByRole("link", { name: "Order again" })).toBeVisible();
     await orderRow.getByRole("link", { name: "Order again" }).click();
@@ -48,7 +48,7 @@ test("a customer reopens an order with current pricing and places a new order", 
 
     await pool.query("UPDATE product_variants SET active=false WHERE id=$1", [variantId]);
     await pool.query("INSERT INTO product_variants (id,product_id,sku,label,base_price_cents) VALUES ($1,$2,$3,'Large',2500)", [replacementVariantId, productId, `REORDER-NEW-${suffix}`]);
-    await page.goto("/account");
+    await page.goto("/account?section=orders");
     await page.locator(".account-orders li").filter({ hasText: oldOrderId.slice(0, 8) }).getByRole("link", { name: "Order again" }).click();
     await expect(page.getByText("Your previous product option is unavailable", { exact: false })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Product option" })).toContainText("Large");

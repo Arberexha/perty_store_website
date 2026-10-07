@@ -38,7 +38,17 @@ test("a customer saves, reopens, shares, duplicates, and deletes a design", asyn
 
     await anotherDevice.addCookies([{ name: "perty_session", value: token, url: baseURL }]);
     const otherPage = await anotherDevice.newPage();
-    await otherPage.goto(`${baseURL}/account`);
+    await otherPage.goto(`${baseURL}/account?section=designs`);
+    await expect(otherPage.getByRole("heading", { name: "Weekend hat" })).toBeVisible();
+    await expect(otherPage.getByRole("heading", { name: "My quotes" })).toHaveCount(0);
+    await expect(otherPage.getByRole("heading", { name: "My orders" })).toHaveCount(0);
+    await otherPage.locator(".account-menu summary").click();
+    await expect(otherPage.locator(".account-menu-list a")).toHaveText(["My quotes", "My designs", "My orders"]);
+    await otherPage.locator(".account-menu-list").getByRole("link", { name: "My orders" }).click();
+    await expect(otherPage.getByRole("heading", { name: "My orders" })).toBeVisible();
+    await expect(otherPage.locator(".account-menu")).not.toHaveAttribute("open");
+    await expect(otherPage.getByRole("heading", { name: "My designs" })).toHaveCount(0);
+    await otherPage.getByRole("navigation", { name: "Account sections" }).getByRole("link", { name: "My designs" }).click();
     await expect(otherPage.getByRole("heading", { name: "Weekend hat" })).toBeVisible();
     await otherPage.getByRole("button", { name: "Create share link" }).click();
     await expect(otherPage.getByRole("button", { name: "Copy share link" })).toBeVisible();
@@ -56,7 +66,7 @@ test("a customer saves, reopens, shares, duplicates, and deletes a design", asyn
     await otherPage.getByRole("button", { name: "Save changes" }).click();
     await expect(otherPage.getByRole("textbox", { name: "Design name" })).toHaveValue("Weekend hat");
     await otherPage.getByRole("button", { name: "Save changes" }).last().click();
-    await otherPage.goto(`${baseURL}/account`);
+    await otherPage.goto(`${baseURL}/account?section=designs`);
     await otherPage.getByRole("button", { name: "Duplicate" }).click();
     await expect(otherPage.getByRole("heading", { name: "Weekend hat (copy)" })).toBeVisible();
     await otherPage.getByRole("article").filter({ hasText: "Weekend hat (copy)" }).getByRole("button", { name: "Delete" }).click();

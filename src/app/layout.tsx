@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import MotionEffects from "@/components/motion-effects";
+import { AccountMenu } from "@/components/account-menu";
 import { QuoteNotificationRefresh } from "@/components/quote-notification-refresh";
 import { QuoteNotifications, type QuoteNotification } from "@/components/quote-notifications";
 import { OrderAnnouncementBanner } from "@/components/order-announcement";
@@ -37,7 +38,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <div className="header-actions">
             <Link className="account-link" href="/cart">Cart</Link>
             {user && <><QuoteNotificationRefresh /><QuoteNotifications notifications={unread?.rows ?? []} count={unread?.rows[0]?.unread_count ?? 0} /></>}
-            {user ? <Link className="account-link" href="/account">My account</Link> : <Link className="account-link" href="/login">Sign in</Link>}
+            {user ? <AccountMenu /> : <Link className="account-link" href="/login">Sign in</Link>}
             <Link className="header-design-link" href="/#shop-categories">Start designing <span aria-hidden="true">↗</span></Link>
           </div>
         </header>
